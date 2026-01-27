@@ -5,6 +5,7 @@ import { LandingPage } from "@/components/landing-page"
 import { LoginModal } from "@/components/auth/login-modal"
 import { SignupModal } from "@/components/auth/signup-modal"
 import { CentralAuthorityEntry } from "@/components/central-authority/central-authority-entry"
+import { DirectorateDashboard } from "@/components/central-authority/directorate-dashboard"
 import { WasteCompanyDashboard } from "@/components/dashboards/waste-company-dashboard"
 import { ResidentPortal } from "@/components/dashboards/resident-portal"
 import {
@@ -122,8 +123,24 @@ export default function Home() {
   if (currentUser) {
     switch (currentUser.role) {
       case "central-authority":
-        // Central Authority now uses role-based access control (RBAC)
-        // Users are automatically routed to their dashboard based on role_id
+        // If the resolved role slug is 'directorate', take them straight to the Directorate dashboard.
+        // Otherwise use the CentralAuthorityEntry to route based on role.
+        if ((currentUser.user.role?.slug ?? "") === "directorate") {
+          return <DirectorateDashboard user={{
+            id: String(currentUser.user.id),
+            name: currentUser.name,
+            email: currentUser.user.email,
+            roleId: 1,
+            role: {
+              id: 1,
+              name: "Directorate",
+              slug: "directorate",
+              level: "Strategic / Policy",
+              authorityType: "Highest decision-making body",
+              description: "Define system-wide policies, rules, and objectives. Approve major system operations and changes.",
+            }
+          }} onLogout={handleLogout} />
+        }
         return <CentralAuthorityEntry onBack={handleLogout} />
       case "waste-company":
         return <WasteCompanyDashboard user={currentUser} onLogout={handleLogout} />

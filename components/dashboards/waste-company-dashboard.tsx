@@ -59,7 +59,7 @@ import {
   RotateCcw,
 } from "lucide-react"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
-import { authorizedGet, authorizedPost } from "@/lib/api/client"
+import { authorizedGet, authorizedPost, authorizedPut } from "@/lib/api/client"
 
 interface WasteCompanyDashboardProps {
   user: { role: string; name: string }
@@ -77,6 +77,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
   const [drivers, setDrivers] = useState<any[]>([])
   const [routes, setRoutes] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
+  const [selectedReport, setSelectedReport] = useState<"daily" | "fleet" | "driver" | "route">("daily")
   const [companyStats, setCompanyStats] = useState<{ fleet_size: number; employee_count: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +94,12 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
     license_expiry: "",
     assigned_vehicle: "",
   })
+  const [assignDriverModal, setAssignDriverModal] = useState<{ open: boolean; vehicleId: number | null }>({ open: false, vehicleId: null })
+  const [assignRouteModal, setAssignRouteModal] = useState<{ open: boolean; vehicleId: number | null }>({ open: false, vehicleId: null })
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null)
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
+  const [assigningDriver, setAssigningDriver] = useState(false)
+  const [assigningRoute, setAssigningRoute] = useState(false)
 
   useEffect(() => {
     const normalize = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
@@ -182,6 +189,44 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
     }
   }
 
+  const handleAssignDriverToVehicle = async () => {
+    if (!assignDriverModal.vehicleId || !selectedDriverId) return
+    setAssigningDriver(true)
+    setError(null)
+    try {
+      await authorizedPost(`/fleet/drivers/${selectedDriverId}/assign/`, {
+        vehicle_id: assignDriverModal.vehicleId,
+      })
+      setAssignDriverModal({ open: false, vehicleId: null })
+      setSelectedDriverId(null)
+      await reload()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to assign driver"
+      setError(msg)
+    } finally {
+      setAssigningDriver(false)
+    }
+  }
+
+  const handleAssignRouteToVehicle = async () => {
+    if (!assignRouteModal.vehicleId || !selectedRouteId) return
+    setAssigningRoute(true)
+    setError(null)
+    try {
+      await authorizedPut(`/routes/${selectedRouteId}/`, {
+        assigned_vehicle: assignRouteModal.vehicleId,
+      })
+      setAssignRouteModal({ open: false, vehicleId: null })
+      setSelectedRouteId(null)
+      await reload()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to assign route"
+      setError(msg)
+    } finally {
+      setAssigningRoute(false)
+    }
+  }
+
   const menuItems = [
     { id: "overview", label: "Overview", icon: BarChart3 },
     { id: "vehicles", label: "Fleet Management", icon: Truck },
@@ -206,6 +251,120 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
 
   const activeRoutes = useMemo(() => routes.filter((r) => r.status === "in_progress"), [routes])
   const pendingRequestsList = useMemo(() => requests.filter((r) => r.status === "pending"), [requests])
+
+  const dailySummary = useMemo(() => {
+    const completedCollections = requests.filter((r) => r.status === "completed").length
+    const totalVolume = requests.reduce((acc, r) => acc + (Number(r.quantity_bags) || 0), 0)
+    const routesCompleted = routes.filter((r) => r.status === "completed").length
+    const activeVehicles = vehicles.filter((v) => v.current_status === "active").length
+    const pendingRequests = requests.filter((r) => r.status === "pending").length
+    return {
+      Date: new Date().toLocaleDateString(),
+      TotalCollections: completedCollections,
+      TotalVolume: totalVolume,
+      RoutesCompleted: routesCompleted,
+      ActiveVehicles: activeVehicles,
+      PendingRequests: pendingRequests,
+    }
+  }, [requests, routes, vehicles])
+
+  const fleetReport = useMemo(() => {
+    return vehicles.map((v) => {
+      const trips = routes.filter((r) => r.assigned_vehicle === v.id).length
+      const volume = Number(v.total_volume || 0)
+      return {
+        VehicleID: v.id,
+        Plate: v.plate_number,
+        Type: v.vehicle_type,
+        Status: v.current_status,
+        TotalTrips: trips,
+        TotalVolume: volume,
+      }
+    })
+  }, [vehicles, routes])
+
+  const driverReport = useMemo(() => {
+    return drivers.map((d) => {
+      const trips = Number(d.total_collections || d.total_trips || 0)
+      const totalVolume = Number(d.total_volume || 0)
+      const avgVolume = trips ? Number((totalVolume / trips).toFixed(1)) : 0
+      return {
+        DriverID: d.id,
+        Name: d.full_name || "Driver",
+        AssignedVehicle: d.assigned_vehicle || "Unassigned",
+        TotalTrips: trips,
+        TotalVolume: totalVolume,
+        AvgVolumePerTrip: avgVolume,
+        HoursWorked: Number(d.hours_worked || d.shift_hours || 0),
+      }
+    })
+  }, [drivers])
+
+  const routeReport = useMemo(() => {
+    return routes.map((r) => {
+      const completed = Number(r.completed_stops || 0)
+      const total = Number(r.total_stops || 0)
+      const pending = Math.max(total - completed, 0)
+      const completionRate = total ? Math.round((completed / total) * 100) : 0
+      return {
+        RouteID: r.id,
+        Name: r.name,
+        TotalStops: total,
+        CompletedStops: completed,
+        PendingStops: pending,
+        TotalVolume: Number(r.total_volume || 0),
+        CompletionRate: `${completionRate}%`,
+      }
+    })
+  }, [routes])
+
+  const reportConfig = useMemo(() => {
+    return {
+      daily: {
+        title: "Daily Summary",
+        description: "Today’s operations overview",
+        rows: [dailySummary],
+      },
+      fleet: {
+        title: "Fleet Report",
+        description: "Vehicle performance",
+        rows: fleetReport,
+      },
+      driver: {
+        title: "Driver Report",
+        description: "Driver productivity",
+        rows: driverReport,
+      },
+      route: {
+        title: "Route Analysis",
+        description: "Route efficiency",
+        rows: routeReport,
+      },
+    } as const
+  }, [dailySummary, fleetReport, driverReport, routeReport])
+
+  const exportCSV = (rows: Record<string, any>[], filename: string) => {
+    if (!rows.length) return
+    const headers = Object.keys(rows[0])
+    const csv = [headers.join(","), ...rows.map((row) => headers.map((h) => JSON.stringify(row[h] ?? "")).join(","))].join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportPDF = (title: string, rows: Record<string, any>[]) => {
+    const headers = Object.keys(rows[0] || {})
+    const content = `Report: ${title}\n\n` + headers.join("\t") + "\n" + rows.map((row) => headers.map((h) => row[h]).join("\t")).join("\n")
+    const win = window.open("", "_blank")
+    if (!win) return
+    win.document.write(`<pre>${content}</pre>`)
+    win.document.close()
+    win.print()
+  }
 
   if (loading) {
     return (
@@ -307,6 +466,68 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
             </DropdownMenu>
           </div>
         </header>
+        {/* Modals */}
+        {/* Assign Driver Modal */}
+        <Dialog open={assignDriverModal.open} onOpenChange={(open) => setAssignDriverModal({ open, vehicleId: open ? assignDriverModal.vehicleId : null })}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Assign Driver</DialogTitle>
+              <DialogDescription>Select a driver to assign to this vehicle.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Label>Driver</Label>
+              <Select value={selectedDriverId ?? ""} onValueChange={setSelectedDriverId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose driver" />
+                </SelectTrigger>
+                <SelectContent>
+                  {drivers.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.full_name || d.id} {d.assigned_vehicle ? `(Vehicle ${d.assigned_vehicle})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignDriverModal({ open: false, vehicleId: null })}>Cancel</Button>
+              <Button onClick={handleAssignDriverToVehicle} disabled={assigningDriver || !selectedDriverId}>
+                {assigningDriver ? "Assigning..." : "Assign"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assign Route Modal */}
+        <Dialog open={assignRouteModal.open} onOpenChange={(open) => setAssignRouteModal({ open, vehicleId: open ? assignRouteModal.vehicleId : null })}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Assign Route</DialogTitle>
+              <DialogDescription>Bind a route to this vehicle.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Label>Route</Label>
+              <Select value={selectedRouteId ?? ""} onValueChange={setSelectedRouteId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose route" />
+                </SelectTrigger>
+                <SelectContent>
+                  {routes.map((r) => (
+                    <SelectItem key={r.id} value={String(r.id)}>
+                      {r.name} ({r.status})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignRouteModal({ open: false, vehicleId: null })}>Cancel</Button>
+              <Button onClick={handleAssignRouteToVehicle} disabled={assigningRoute || !selectedRouteId}>
+                {assigningRoute ? "Assigning..." : "Assign"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Dashboard Content */}
         <div className="p-6">
@@ -498,11 +719,11 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                                   <MapPin className="mr-2 h-4 w-4" />
                                   Track Location
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setAssignDriverModal({ open: true, vehicleId: vehicle.id })}>
                                   <Users className="mr-2 h-4 w-4" />
                                   Assign Driver
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setAssignRouteModal({ open: true, vehicleId: vehicle.id })}>
                                   <Navigation className="mr-2 h-4 w-4" />
                                   Assign Route
                                 </DropdownMenuItem>
@@ -598,7 +819,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                                   <Truck className="mr-2 h-4 w-4" />
                                   Assign Vehicle
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setAssignRouteModal({ open: true, vehicleId: driver.assigned_vehicle || null })}>
                                   <Navigation className="mr-2 h-4 w-4" />
                                   Assign Route
                                 </DropdownMenuItem>
@@ -801,59 +1022,99 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
           {activeTab === "reports" && (
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="cursor-pointer hover:border-primary transition-colors">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <BarChart3 className="h-6 w-6 text-primary" />
+                {[{
+                  id: "daily" as const,
+                  title: "Daily Summary",
+                  description: "Today’s operations",
+                  icon: BarChart3,
+                }, {
+                  id: "fleet" as const,
+                  title: "Fleet Report",
+                  description: "Vehicle performance",
+                  icon: Truck,
+                }, {
+                  id: "driver" as const,
+                  title: "Driver Report",
+                  description: "Driver productivity",
+                  icon: Users,
+                }, {
+                  id: "route" as const,
+                  title: "Route Analysis",
+                  description: "Route efficiency",
+                  icon: Navigation,
+                }].map((report) => (
+                  <Card
+                    key={report.id}
+                    className={`cursor-pointer transition-colors ${selectedReport === report.id ? "border-primary shadow-sm" : "hover:border-primary"}`}
+                    onClick={() => setSelectedReport(report.id)}
+                  >
+                    <CardHeader>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                          <report.icon className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">{report.title}</CardTitle>
+                          <CardDescription>{report.description}</CardDescription>
+                        </div>
                       </div>
-                      <div>
-                        <CardTitle className="text-base">Daily Summary</CardTitle>
-                        <CardDescription>Today&apos;s operations</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-                <Card className="cursor-pointer hover:border-primary transition-colors">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <Truck className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">Fleet Report</CardTitle>
-                        <CardDescription>Vehicle performance</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-                <Card className="cursor-pointer hover:border-primary transition-colors">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <Users className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">Driver Report</CardTitle>
-                        <CardDescription>Driver productivity</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-                <Card className="cursor-pointer hover:border-primary transition-colors">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <Navigation className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">Route Analysis</CardTitle>
-                        <CardDescription>Route efficiency</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
+                    </CardHeader>
+                  </Card>
+                ))}
               </div>
+
+              <Card>
+                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle>{reportConfig[selectedReport].title}</CardTitle>
+                    <CardDescription>{reportConfig[selectedReport].description}</CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => exportCSV(reportConfig[selectedReport].rows, `${reportConfig[selectedReport].title}.csv`)}
+                      disabled={!reportConfig[selectedReport].rows.length}
+                    >
+                      Export CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => reportConfig[selectedReport].rows.length && exportPDF(reportConfig[selectedReport].title, reportConfig[selectedReport].rows)}
+                      disabled={!reportConfig[selectedReport].rows.length}
+                    >
+                      Export PDF
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {reportConfig[selectedReport].rows.length ? (
+                    <div className="overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {Object.keys(reportConfig[selectedReport].rows[0]).map((col) => (
+                              <TableHead key={col}>{col.replace(/([A-Z])/g, " $1").trim()}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {reportConfig[selectedReport].rows.map((row, idx) => (
+                            <TableRow key={idx}>
+                              {Object.keys(row).map((col) => (
+                                <TableCell key={col}>{row[col]}</TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No data available for this report.</p>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
 

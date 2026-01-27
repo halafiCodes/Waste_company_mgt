@@ -52,7 +52,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
-import { authorizedGet } from "@/lib/api/client"
+import { authorizedGet, authorizedPost } from "@/lib/api/client"
 
 interface ResidentPortalProps {
   user: { role: string; name: string }
@@ -77,11 +77,20 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
   const [preferredTime, setPreferredTime] = useState("")
   const [complaintType, setComplaintType] = useState("")
   const [complaintDescription, setComplaintDescription] = useState("")
+  const [complaintAddress, setComplaintAddress] = useState("")
+  const [relatedRequestId, setRelatedRequestId] = useState<string | null>(null)
   const [requests, setRequests] = useState<any[]>(initialList)
   const [complaints, setComplaints] = useState<any[]>(initialList)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<any[]>(initialList)
+  const [requestSubmitting, setRequestSubmitting] = useState(false)
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false)
+  const [address, setAddress] = useState("")
+  const [notes, setNotes] = useState("")
+  const [estimatedWeight, setEstimatedWeight] = useState("")
+  const [requestFilter, setRequestFilter] = useState("all")
+  const [complaintFilter, setComplaintFilter] = useState("all")
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: Home },
@@ -92,19 +101,86 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
     { id: "settings", label: "Settings", icon: Settings },
   ]
 
-  const handleNewRequest = () => {
-    // Handle form submission
-    setShowRequestModal(false)
-    setWasteType("")
-    setQuantity("")
-    setPreferredDate("")
-    setPreferredTime("")
+  const refreshResidentData = async () => {
+    const normalize = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
+    const [reqRes, complRes, notifRes] = await Promise.all([
+      authorizedGet<any>("/collections/resident/requests/"),
+      authorizedGet<any>("/complaints/resident/complaints/"),
+      authorizedGet<any>("/notifications/"),
+    ])
+    setRequests(normalize(reqRes))
+    setComplaints(normalize(complRes))
+    setNotifications(normalize(notifRes))
   }
 
-  const handleNewComplaint = () => {
-    setShowComplaintModal(false)
-    setComplaintType("")
-    setComplaintDescription("")
+  const handleNewRequest = async () => {
+    if (!wasteType || !quantity || !preferredDate || !preferredTime || !address) {
+      setError("Please fill waste type, quantity, date, time, and address.")
+      return
+    }
+    setRequestSubmitting(true)
+    setError(null)
+    try {
+      await authorizedPost("/collections/resident/requests/", {
+        waste_type: wasteType,
+        quantity_bags: Number(quantity) || 1,
+        estimated_weight_kg: estimatedWeight ? Number(estimatedWeight) : null,
+        preferred_date: preferredDate,
+        preferred_time: preferredTime,
+        address,
+        special_instructions: notes,
+      })
+      await refreshResidentData()
+      setShowRequestModal(false)
+      setWasteType("")
+      setQuantity("")
+      setPreferredDate("")
+      setPreferredTime("")
+      setAddress("")
+      setNotes("")
+      setEstimatedWeight("")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to submit request"
+      setError(message)
+    } finally {
+      setRequestSubmitting(false)
+    }
+  }
+
+  const handleNewComplaint = async () => {
+    if (!complaintType || !complaintDescription || !complaintAddress) {
+      setError("Please fill issue type, description, and address.")
+      return
+    }
+    setComplaintSubmitting(true)
+    setError(null)
+    const typeMap: Record<string, string> = {
+      missed: "missed_collection",
+      late: "late_pickup",
+      quality: "service_quality",
+      illegal: "illegal_dumping",
+      other: "other",
+    }
+    try {
+      await authorizedPost("/complaints/resident/complaints/", {
+        report_type: typeMap[complaintType] ?? "other",
+        description: complaintDescription,
+        location_address: complaintAddress,
+        priority: "medium",
+        related_request: relatedRequestId,
+      })
+      await refreshResidentData()
+      setShowComplaintModal(false)
+      setComplaintType("")
+      setComplaintDescription("")
+      setComplaintAddress("")
+      setRelatedRequestId(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to submit complaint"
+      setError(message)
+    } finally {
+      setComplaintSubmitting(false)
+    }
   }
 
   useEffect(() => {
@@ -135,6 +211,17 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
   const pendingCount = useMemo(() => requests.filter(r => r.status === "pending").length, [requests])
   const completedCount = useMemo(() => requests.filter(r => r.status === "completed").length, [requests])
   const openComplaints = useMemo(() => complaints.filter(c => c.status !== "resolved").length, [complaints])
+  const filteredRequests = useMemo(() => {
+    if (requestFilter === "pending") return requests.filter(r => r.status === "pending")
+    if (requestFilter === "in-progress") return requests.filter(r => r.status === "in_progress")
+    if (requestFilter === "completed") return requests.filter(r => r.status === "completed")
+    return requests
+  }, [requestFilter, requests])
+  const filteredComplaints = useMemo(() => {
+    if (complaintFilter === "open") return complaints.filter(c => c.status !== "resolved" && c.status !== "closed")
+    if (complaintFilter === "resolved") return complaints.filter(c => c.status === "resolved")
+    return complaints
+  }, [complaintFilter, complaints])
 
   if (loading) {
     return (
@@ -461,7 +548,7 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
           {activeTab === "requests" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <Tabs defaultValue="all" className="w-auto">
+                <Tabs value={requestFilter} onValueChange={setRequestFilter} className="w-auto">
                   <TabsList>
                     <TabsTrigger value="all">All Requests</TabsTrigger>
                     <TabsTrigger value="pending">Pending</TabsTrigger>
@@ -476,7 +563,7 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
               </div>
 
               <div className="space-y-4">
-                {requests.map((request) => (
+                {filteredRequests.map((request) => (
                   <Card key={request.id}>
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between">
@@ -557,7 +644,7 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
           {activeTab === "complaints" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <Tabs defaultValue="all" className="w-auto">
+                <Tabs value={complaintFilter} onValueChange={setComplaintFilter} className="w-auto">
                   <TabsList>
                     <TabsTrigger value="all">All</TabsTrigger>
                     <TabsTrigger value="open">Open</TabsTrigger>
@@ -571,7 +658,7 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
               </div>
 
               <div className="space-y-4">
-                {complaints.map((complaint) => (
+                {filteredComplaints.map((complaint) => (
                   <Card key={complaint.id}>
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between">
@@ -767,7 +854,12 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
               </div>
               <div className="space-y-2">
                 <Label>Estimated Weight (kg)</Label>
-                <Input type="number" placeholder="Optional" />
+                <Input
+                  type="number"
+                  placeholder="Optional"
+                  value={estimatedWeight}
+                  onChange={(e) => setEstimatedWeight(e.target.value)}
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -792,13 +884,28 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Pickup Address</Label>
+              <Textarea
+                placeholder="Street, house number, landmarks"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
               <Label>Additional Notes</Label>
-              <Textarea placeholder="Any special instructions..." />
+              <Textarea
+                placeholder="Any special instructions..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRequestModal(false)}>Cancel</Button>
-            <Button onClick={handleNewRequest}>Submit Request</Button>
+            <Button onClick={handleNewRequest} disabled={requestSubmitting}>
+              {requestSubmitting ? "Submitting..." : "Submit Request"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -836,8 +943,17 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
               />
             </div>
             <div className="space-y-2">
+              <Label>Address / Location</Label>
+              <Textarea
+                placeholder="Where did this occur?"
+                value={complaintAddress}
+                onChange={(e) => setComplaintAddress(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
               <Label>Related Request (Optional)</Label>
-              <Select>
+              <Select value={relatedRequestId ?? "none"} onValueChange={(v) => setRelatedRequestId(v === "none" ? null : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a request" />
                 </SelectTrigger>
@@ -854,7 +970,9 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowComplaintModal(false)}>Cancel</Button>
-            <Button onClick={handleNewComplaint}>Submit Complaint</Button>
+            <Button onClick={handleNewComplaint} disabled={complaintSubmitting}>
+              {complaintSubmitting ? "Submitting..." : "Submit Complaint"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

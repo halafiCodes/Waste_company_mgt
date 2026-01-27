@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
   TableBody,
@@ -23,20 +22,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Recycle,
-  Building2,
   Truck,
   Users,
   AlertTriangle,
@@ -90,28 +79,53 @@ const mockComplaints = [
   { id: "C005", resident: "Yohannes Bekele", zone: "Addis Ketema", type: "Service Quality", status: "investigating", date: "2025-01-22", priority: "medium" },
 ]
 
+const policyFramework = [
+  { id: "P-01", title: "Solid Waste Strategy 2026", owner: "Directorate", status: "active", lastReviewed: "2026-01-05" },
+  { id: "P-02", title: "Fleet Emissions Standard", owner: "Env. Compliance", status: "draft", lastReviewed: "2025-12-18" },
+  { id: "P-03", title: "Citizen Complaint SLA", owner: "Service Quality", status: "active", lastReviewed: "2025-11-30" },
+  { id: "P-04", title: "Data Governance Policy", owner: "Analytics", status: "review", lastReviewed: "2025-12-20" },
+]
+
+const initiatives = [
+  { id: "SI-12", name: "Smart Bins Pilot", sponsor: "Directorate", status: "in_progress", progress: 52, impact: "High" },
+  { id: "SI-14", name: "Route Optimization V2", sponsor: "Analytics", status: "in_progress", progress: 68, impact: "High" },
+  { id: "SI-09", name: "Recycling Hubs Scale-up", sponsor: "Env. Compliance", status: "planning", progress: 25, impact: "Medium" },
+  { id: "SI-07", name: "Contractor Performance Reform", sponsor: "Directorate", status: "at_risk", progress: 41, impact: "Critical" },
+]
+
+const rolesMatrix = [
+  { name: "Directorate", scope: "City-wide", approvals: "All strategic", access: "Full" },
+  { name: "Strategic Authority", scope: "Policy & oversight", approvals: "Policies, budgets", access: "High" },
+  { name: "Operations", scope: "Field execution", approvals: "Fleet, routes", access: "Medium" },
+  { name: "Audit & Compliance", scope: "Controls", approvals: "Exceptions", access: "High" },
+]
+
+const executiveReports = [
+  { title: "Collection Performance", period: "MTD", coverage: "87%", recycling: "24%", incidents: 12 },
+  { title: "Budget Utilization", period: "Q1", coverage: "62%", recycling: "—", incidents: 0 },
+  { title: "Contractor Scorecard", period: "Q1", coverage: "A-/B+", recycling: "—", incidents: 4 },
+]
+
 export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDashboardProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [activeTab, setActiveTab] = useState("overview")
+  const [activeTab, setActiveTab] = useState("strategic-overview")
   const [searchQuery, setSearchQuery] = useState("")
-  const [showCompanyModal, setShowCompanyModal] = useState(false)
-  const [showZoneAssignModal, setShowZoneAssignModal] = useState(false)
-  const [selectedCompany, setSelectedCompany] = useState<typeof mockCompanies[0] | null>(null)
 
   const menuItems = [
-    { id: "overview", label: "Overview", icon: BarChart3 },
-    { id: "companies", label: "Waste Companies", icon: Building2 },
-    { id: "zones", label: "Service Zones", icon: MapPin },
-    { id: "complaints", label: "Complaints", icon: AlertTriangle },
-    { id: "reports", label: "Reports", icon: FileText },
+    { id: "strategic-overview", label: "Strategic Overview", icon: BarChart3 },
+    { id: "policies", label: "Policies & Rules", icon: FileText },
+    { id: "approvals", label: "Approvals", icon: CheckCircle },
+    { id: "initiatives", label: "Strategic Initiatives", icon: Recycle },
+    { id: "roles", label: "Role Management", icon: Users },
+    { id: "reports", label: "Executive Reports", icon: FileText },
     { id: "settings", label: "Settings", icon: Settings },
   ]
 
   const stats = [
-    { title: "Registered Companies", value: "24", change: "+3", trend: "up", icon: Building2 },
-    { title: "Active Vehicles", value: "320", change: "+12", trend: "up", icon: Truck },
-    { title: "Service Zones", value: "11", change: "0", trend: "neutral", icon: MapPin },
-    { title: "Open Complaints", value: "47", change: "-8", trend: "down", icon: AlertTriangle },
+    { title: "City Coverage", value: "87%", change: "+2.1%", trend: "up", icon: MapPin },
+    { title: "Recycling Rate", value: "24%", change: "+1.4%", trend: "up", icon: Recycle },
+    { title: "Operational Budget", value: "62% utilized", change: "On track", trend: "neutral", icon: TrendingUp },
+    { title: "Open Risks", value: "18", change: "-4", trend: "down", icon: AlertTriangle },
   ]
 
   return (
@@ -193,9 +207,8 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
 
         {/* Dashboard Content */}
         <div className="p-6">
-          {activeTab === "overview" && (
+          {activeTab === "strategic-overview" && (
             <div className="space-y-6">
-              {/* Stats Grid */}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {stats.map((stat) => (
                   <Card key={stat.title}>
@@ -211,7 +224,7 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
                         {stat.trend === "up" && <TrendingUp className="h-4 w-4 text-green-600" />}
                         {stat.trend === "down" && <TrendingDown className="h-4 w-4 text-green-600" />}
                         <span className={stat.trend === "up" ? "text-green-600" : stat.trend === "down" ? "text-green-600" : "text-muted-foreground"}>
-                          {stat.change} from last month
+                          {stat.change}
                         </span>
                       </div>
                     </CardContent>
@@ -219,210 +232,103 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
                 ))}
               </div>
 
-              {/* Recent Activity */}
               <div className="grid gap-6 lg:grid-cols-2">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Pending Company Approvals</CardTitle>
-                    <CardDescription>Companies waiting for registration approval</CardDescription>
+                    <CardTitle>City Performance Snapshot</CardTitle>
+                    <CardDescription>Coverage, incidents, and recycling by zone</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {mockCompanies.filter(c => c.status === "pending").map((company) => (
-                        <div key={company.id} className="flex items-center justify-between rounded-lg border p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                              <Building2 className="h-5 w-5 text-primary" />
-                            </div>
-                            <div>
-                              <p className="font-medium">{company.name}</p>
-                              <p className="text-sm text-muted-foreground">License: {company.license}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" className="text-destructive bg-transparent">
-                              <XCircle className="mr-1 h-4 w-4" />
-                              Reject
-                            </Button>
-                            <Button size="sm">
-                              <CheckCircle className="mr-1 h-4 w-4" />
-                              Approve
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Zone</TableHead>
+                          <TableHead>Coverage</TableHead>
+                          <TableHead>Assigned Company</TableHead>
+                          <TableHead className="text-right">Incident Flag</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {mockZones.slice(0, 5).map((zone) => (
+                          <TableRow key={zone.id}>
+                            <TableCell className="font-medium">{zone.name}</TableCell>
+                            <TableCell>{zone.coverage}%</TableCell>
+                            <TableCell>{zone.assignedCompany || "Unassigned"}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant={zone.coverage >= 80 ? "secondary" : "destructive"}>
+                                {zone.coverage >= 80 ? "Stable" : "Investigate"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Recent Complaints</CardTitle>
-                    <CardDescription>Latest citizen reports requiring attention</CardDescription>
+                    <CardTitle>High-Priority Items</CardTitle>
+                    <CardDescription>What needs directorate attention right now</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {mockComplaints.slice(0, 4).map((complaint) => (
-                        <div key={complaint.id} className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                              complaint.priority === "critical" ? "bg-destructive/10" : 
-                              complaint.priority === "high" ? "bg-warning/10" : "bg-muted"
-                            }`}>
-                              <AlertTriangle className={`h-5 w-5 ${
-                                complaint.priority === "critical" ? "text-destructive" : 
-                                complaint.priority === "high" ? "text-warning" : "text-muted-foreground"
-                              }`} />
-                            </div>
-                            <div>
-                              <p className="font-medium">{complaint.type}</p>
-                              <p className="text-sm text-muted-foreground">{complaint.zone} - {complaint.resident}</p>
-                            </div>
+                  <CardContent className="space-y-4">
+                    {mockComplaints.slice(0, 3).map((item) => (
+                      <div key={item.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${item.priority === "critical" ? "bg-destructive/10" : "bg-warning/10"}`}>
+                            <AlertTriangle className={`h-5 w-5 ${item.priority === "critical" ? "text-destructive" : "text-warning"}`} />
                           </div>
-                          <Badge variant={
-                            complaint.status === "open" ? "destructive" : 
-                            complaint.status === "investigating" ? "secondary" : "outline"
-                          }>
-                            {complaint.status}
-                          </Badge>
+                          <div>
+                            <p className="font-medium">{item.type}</p>
+                            <p className="text-sm text-muted-foreground">{item.zone} • {item.date}</p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                        <Badge variant="destructive">{item.priority}</Badge>
+                      </div>
+                    ))}
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Zone Coverage Overview */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Zone Coverage Overview</CardTitle>
-                  <CardDescription>Service coverage across all zones</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {mockZones.map((zone) => (
-                      <div key={zone.id} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="font-medium">{zone.name}</span>
-                            <span className="ml-2 text-sm text-muted-foreground">
-                              ({zone.assignedCompany || "Unassigned"})
-                            </span>
-                          </div>
-                          <span className="text-sm font-medium">{zone.coverage}%</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-secondary">
-                          <div 
-                            className={`h-2 rounded-full ${
-                              zone.coverage >= 90 ? "bg-green-600" : 
-                              zone.coverage >= 70 ? "bg-primary" : 
-                              zone.coverage >= 50 ? "bg-warning" : "bg-destructive"
-                            }`}
-                            style={{ width: `${zone.coverage}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           )}
 
-          {activeTab === "companies" && (
+          {activeTab === "policies" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input placeholder="Search companies..." className="pl-9" />
+                <div>
+                  <h2 className="text-lg font-semibold">Policies & Rules</h2>
+                  <p className="text-sm text-muted-foreground">Approval and compliance status for governance documents</p>
                 </div>
-                <Button onClick={() => setShowCompanyModal(true)}>
+                <Button size="sm">
                   <Plus className="mr-2 h-4 w-4" />
-                  Register Company
+                  New Policy
                 </Button>
               </div>
-
               <Card>
                 <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Company</TableHead>
-                        <TableHead>License</TableHead>
-                        <TableHead>Service Zones</TableHead>
-                        <TableHead>Vehicles</TableHead>
-                        <TableHead>Drivers</TableHead>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Owner</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead>Last Reviewed</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockCompanies.map((company) => (
-                        <TableRow key={company.id}>
+                      {policyFramework.map((policy) => (
+                        <TableRow key={policy.id}>
+                          <TableCell className="font-medium">{policy.title}</TableCell>
+                          <TableCell>{policy.owner}</TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                                <Building2 className="h-5 w-5 text-primary" />
-                              </div>
-                              <div>
-                                <p className="font-medium">{company.name}</p>
-                                <p className="text-sm text-muted-foreground">{company.id}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{company.license}</TableCell>
-                          <TableCell>
-                            {company.zones.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {company.zones.map((zone) => (
-                                  <Badge key={zone} variant="secondary">{zone}</Badge>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">None assigned</span>
-                            )}
-                          </TableCell>
-                          <TableCell>{company.vehicles}</TableCell>
-                          <TableCell>{company.drivers}</TableCell>
-                          <TableCell>
-                            <Badge variant={company.status === "approved" ? "default" : "secondary"}>
-                              {company.status}
+                            <Badge variant={policy.status === "active" ? "default" : policy.status === "draft" ? "secondary" : "outline"}>
+                              {policy.status}
                             </Badge>
                           </TableCell>
+                          <TableCell>{policy.lastReviewed}</TableCell>
                           <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => {
-                                  setSelectedCompany(company)
-                                  setShowZoneAssignModal(true)
-                                }}>
-                                  <MapPin className="mr-2 h-4 w-4" />
-                                  Assign Zones
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <FileText className="mr-2 h-4 w-4" />
-                                  View Details
-                                </DropdownMenuItem>
-                                {company.status === "pending" && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem className="text-green-600">
-                                      <CheckCircle className="mr-2 h-4 w-4" />
-                                      Approve
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive">
-                                      <XCircle className="mr-2 h-4 w-4" />
-                                      Reject
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <Button variant="outline" size="sm" className="bg-transparent">Review</Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -433,60 +339,121 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
             </div>
           )}
 
-          {activeTab === "zones" && (
+          {activeTab === "approvals" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input placeholder="Search zones..." className="pl-9" />
+                <div>
+                  <h2 className="text-lg font-semibold">Approvals</h2>
+                  <p className="text-sm text-muted-foreground">Contracts, company licenses, and system changes awaiting decision</p>
                 </div>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Zone
+                <Button size="sm" variant="outline" className="bg-transparent">
+                  <Clock className="mr-2 h-4 w-4" />
+                  SLA: 48h
                 </Button>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {mockZones.map((zone) => (
-                  <Card key={zone.id}>
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{zone.name}</CardTitle>
-                        <Badge variant={zone.assignedCompany ? "default" : "destructive"}>
-                          {zone.assignedCompany ? "Assigned" : "Unassigned"}
-                        </Badge>
-                      </div>
-                      <CardDescription>{zone.subcity} Sub-city</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Population</p>
-                          <p className="font-medium">{zone.population}</p>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Company & Contract Approvals</CardTitle>
+                  <CardDescription>Review pending requests</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Applicant</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Zones</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Decision</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {mockCompanies.filter(c => c.status === "pending").map((company) => (
+                        <TableRow key={company.id}>
+                          <TableCell className="font-medium">{company.name}</TableCell>
+                          <TableCell>License & Contract</TableCell>
+                          <TableCell>{company.zones.length ? company.zones.join(", ") : "None"}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">Pending</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button size="sm" variant="outline" className="bg-transparent text-destructive">
+                                <XCircle className="mr-1 h-4 w-4" />
+                                Reject
+                              </Button>
+                              <Button size="sm">
+                                <CheckCircle className="mr-1 h-4 w-4" />
+                                Approve
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>System Change Requests</CardTitle>
+                  <CardDescription>Policy, budget, and IT changes awaiting governance</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {["Budget realignment for recycling hubs", "Data-sharing MOU update", "Route optimization rollout"].map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                          <FileText className="h-4 w-4 text-primary" />
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Coverage</p>
-                          <p className="font-medium">{zone.coverage}%</p>
+                          <p className="font-medium">{item}</p>
+                          <p className="text-xs text-muted-foreground">Requires directorate sign-off</p>
                         </div>
                       </div>
+                      <Button size="sm" variant="outline" className="bg-transparent">Review</Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "initiatives" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">Strategic Initiatives</h2>
+                  <p className="text-sm text-muted-foreground">Directorate-led projects and outcomes</p>
+                </div>
+                <Button size="sm" variant="outline" className="bg-transparent">
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Initiative
+                </Button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {initiatives.map((item) => (
+                  <Card key={item.id}>
+                    <CardHeader className="flex flex-row items-start justify-between pb-2">
                       <div>
-                        <p className="text-sm text-muted-foreground">Assigned Company</p>
-                        <p className="font-medium">{zone.assignedCompany || "Not assigned"}</p>
+                        <CardTitle className="text-base">{item.name}</CardTitle>
+                        <CardDescription>{item.id} • Sponsor: {item.sponsor}</CardDescription>
+                      </div>
+                      <Badge variant={item.status === "in_progress" ? "secondary" : item.status === "planning" ? "outline" : "destructive"}>
+                        {item.status}
+                      </Badge>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span>Impact</span>
+                        <Badge variant="outline">{item.impact}</Badge>
                       </div>
                       <div className="h-2 w-full rounded-full bg-secondary">
-                        <div 
-                          className={`h-2 rounded-full ${
-                            zone.coverage >= 90 ? "bg-green-600" : 
-                            zone.coverage >= 70 ? "bg-primary" : 
-                            zone.coverage >= 50 ? "bg-warning" : "bg-destructive"
-                          }`}
-                          style={{ width: `${zone.coverage}%` }}
-                        />
+                        <div className={`h-2 rounded-full ${item.status === "at_risk" ? "bg-destructive" : "bg-primary"}`} style={{ width: `${item.progress}%` }} />
                       </div>
-                      <Button variant="outline" className="w-full bg-transparent">
-                        <MapPin className="mr-2 h-4 w-4" />
-                        {zone.assignedCompany ? "Reassign Company" : "Assign Company"}
-                      </Button>
+                      <p className="text-xs text-muted-foreground">Progress: {item.progress}%</p>
                     </CardContent>
                   </Card>
                 ))}
@@ -494,85 +461,38 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
             </div>
           )}
 
-          {activeTab === "complaints" && (
+          {activeTab === "roles" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <Tabs defaultValue="all" className="w-auto">
-                  <TabsList>
-                    <TabsTrigger value="all">All</TabsTrigger>
-                    <TabsTrigger value="open">Open</TabsTrigger>
-                    <TabsTrigger value="investigating">Investigating</TabsTrigger>
-                    <TabsTrigger value="resolved">Resolved</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input placeholder="Search complaints..." className="pl-9" />
+                <div>
+                  <h2 className="text-lg font-semibold">Role Management</h2>
+                  <p className="text-sm text-muted-foreground">Oversight of directorates and authorities</p>
                 </div>
+                <Button size="sm">Assign Role</Button>
               </div>
-
               <Card>
                 <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Resident</TableHead>
-                        <TableHead>Zone</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Scope</TableHead>
+                        <TableHead>Approvals</TableHead>
+                        <TableHead>Access Level</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockComplaints.map((complaint) => (
-                        <TableRow key={complaint.id}>
-                          <TableCell className="font-medium">{complaint.id}</TableCell>
-                          <TableCell>{complaint.resident}</TableCell>
-                          <TableCell>{complaint.zone}</TableCell>
-                          <TableCell>{complaint.type}</TableCell>
+                      {rolesMatrix.map((role) => (
+                        <TableRow key={role.name}>
+                          <TableCell className="font-medium">{role.name}</TableCell>
+                          <TableCell>{role.scope}</TableCell>
+                          <TableCell>{role.approvals}</TableCell>
                           <TableCell>
-                            <Badge variant={
-                              complaint.priority === "critical" ? "destructive" : 
-                              complaint.priority === "high" ? "default" : "secondary"
-                            }>
-                              {complaint.priority}
-                            </Badge>
+                            <Badge variant={role.access === "Full" ? "default" : "secondary"}>{role.access}</Badge>
                           </TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              complaint.status === "open" ? "destructive" : 
-                              complaint.status === "investigating" ? "secondary" : "outline"
-                            }>
-                              {complaint.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{complaint.date}</TableCell>
                           <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
-                                  <FileText className="mr-2 h-4 w-4" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <AlertTriangle className="mr-2 h-4 w-4" />
-                                  Escalate
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-green-600">
-                                  <CheckCircle className="mr-2 h-4 w-4" />
-                                  Mark Resolved
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <Button size="sm" variant="outline" className="bg-transparent">Manage</Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -586,100 +506,60 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
           {activeTab === "reports" && (
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-3">
-                <Card className="cursor-pointer hover:border-primary transition-colors">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <BarChart3 className="h-6 w-6 text-primary" />
+                {executiveReports.map((report) => (
+                  <Card key={report.title} className="cursor-pointer transition-colors hover:border-primary">
+                    <CardHeader>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                          <FileText className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">{report.title}</CardTitle>
+                          <CardDescription>{report.period}</CardDescription>
+                        </div>
                       </div>
-                      <div>
-                        <CardTitle>Performance Report</CardTitle>
-                        <CardDescription>Company efficiency metrics</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-                <Card className="cursor-pointer hover:border-primary transition-colors">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <Truck className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle>Collection Report</CardTitle>
-                        <CardDescription>Daily/weekly collection stats</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-                <Card className="cursor-pointer hover:border-primary transition-colors">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <AlertTriangle className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle>Complaint Analysis</CardTitle>
-                        <CardDescription>Complaint trends and resolution</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
+                    </CardHeader>
+                    <CardContent className="space-y-1 text-sm">
+                      <div className="flex justify-between"><span>Coverage</span><span className="font-medium">{report.coverage}</span></div>
+                      <div className="flex justify-between"><span>Recycling / Score</span><span className="font-medium">{report.recycling}</span></div>
+                      <div className="flex justify-between"><span>Incidents</span><span className="font-medium">{report.incidents}</span></div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
+
               <Card>
                 <CardHeader>
-                  <CardTitle>Generate Custom Report</CardTitle>
-                  <CardDescription>Create detailed reports for specific time periods and metrics</CardDescription>
+                  <CardTitle>Executive Report Queue</CardTitle>
+                  <CardDescription>Upcoming packets for the directorate</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label>Report Type</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select report type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="performance">Performance Report</SelectItem>
-                          <SelectItem value="collection">Collection Report</SelectItem>
-                          <SelectItem value="complaint">Complaint Report</SelectItem>
-                          <SelectItem value="zone">Zone Coverage Report</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Time Period</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="week">Last 7 Days</SelectItem>
-                          <SelectItem value="month">Last 30 Days</SelectItem>
-                          <SelectItem value="quarter">Last Quarter</SelectItem>
-                          <SelectItem value="year">Last Year</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Zone/Company</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All</SelectItem>
-                          {mockCompanies.map(c => (
-                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <Button>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Generate Report
-                  </Button>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Report</TableHead>
+                        <TableHead>Owner</TableHead>
+                        <TableHead>Due</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[{ name: "Citywide KPI Pack", owner: "Analytics", due: "Feb 05", status: "In draft" }, { name: "Budget Performance", owner: "Finance", due: "Jan 31", status: "Review" }, { name: "Contractor Audit", owner: "Audit", due: "Feb 12", status: "Not started" }].map((item) => (
+                        <TableRow key={item.name}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell>{item.owner}</TableCell>
+                          <TableCell>{item.due}</TableCell>
+                          <TableCell>
+                            <Badge variant={item.status === "Review" ? "secondary" : item.status === "In draft" ? "outline" : "destructive"}>{item.status}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button size="sm" variant="outline" className="bg-transparent">Open</Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
             </div>
@@ -721,70 +601,6 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
           )}
         </div>
       </main>
-
-      {/* Register Company Modal */}
-      <Dialog open={showCompanyModal} onOpenChange={setShowCompanyModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Register New Company</DialogTitle>
-            <DialogDescription>Add a new waste management company to the system</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Company Name</Label>
-              <Input placeholder="Enter company name" />
-            </div>
-            <div className="space-y-2">
-              <Label>License Number</Label>
-              <Input placeholder="Enter license number" />
-            </div>
-            <div className="space-y-2">
-              <Label>Contact Email</Label>
-              <Input type="email" placeholder="Enter email" />
-            </div>
-            <div className="space-y-2">
-              <Label>Contact Phone</Label>
-              <Input placeholder="Enter phone number" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCompanyModal(false)}>Cancel</Button>
-            <Button onClick={() => setShowCompanyModal(false)}>Register Company</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Zone Assignment Modal */}
-      <Dialog open={showZoneAssignModal} onOpenChange={setShowZoneAssignModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign Service Zones</DialogTitle>
-            <DialogDescription>
-              Assign service zones to {selectedCompany?.name}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Select Zones</Label>
-              <div className="space-y-2">
-                {mockZones.map((zone) => (
-                  <div key={zone.id} className="flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <p className="font-medium">{zone.name}</p>
-                      <p className="text-sm text-muted-foreground">Pop: {zone.population}</p>
-                    </div>
-                    <input type="checkbox" className="h-4 w-4" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowZoneAssignModal(false)}>Cancel</Button>
-            <Button onClick={() => setShowZoneAssignModal(false)}>Assign Zones</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

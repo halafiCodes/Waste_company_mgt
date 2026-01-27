@@ -116,7 +116,7 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
       const role = ROLES[demo.roleId]
       // Map demo role to a real backend demo account
       const usernameByRole: Record<string, { username: string; password: string }> = {
-        directorate: { username: "directorate_admin", password: "TempPass#2024" },
+        directorate: { username: "directorate_admin", password: "Passw0rd!2026" },
         supervisor: { username: "supervisor_ca", password: "Passw0rd!2026" },
         admin: { username: "admin", password: "admin1234" },
         it: { username: "it_ca", password: "Passw0rd!2026" },
