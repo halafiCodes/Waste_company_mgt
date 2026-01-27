@@ -34,8 +34,8 @@ INSTALLED_APPS = [
     "notifications.apps.NotificationsConfig",
     "reports",
     "audit",
-    "governance",
-    "corsheaders"
+    "governance"
+  
 ]
 
 MIDDLEWARE = [
