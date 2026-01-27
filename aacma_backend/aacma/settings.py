@@ -35,9 +35,11 @@ INSTALLED_APPS = [
     "reports",
     "audit",
     "governance",
+    "corsheaders"
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -138,6 +140,7 @@ CORS_ALLOWED_ORIGINS = (
     [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
     if cors_origins_env
     else [
+        "https://aacma-frontend.onrender.com",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://10.0.0.0:3000",
