@@ -43,10 +43,10 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_db
         run: |
-          python manage.py migrate
+          python aacma_backend/manage.py migrate
 
       - name: Run tests
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_db
         run: |
-          python manage.py test
+          python aacma_backend/manage.py test
