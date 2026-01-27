@@ -1,38 +1,38 @@
 services:
-	- type: web
-		name: aacma-backend
-		env: python
-		region: oregon
-		plan: free
-		rootDir: aacma_backend
-		buildCommand: |
-			pip install -r requirements.txt
-			python manage.py collectstatic --noinput
-		startCommand: gunicorn aacma.wsgi:application --bind 0.0.0.0:$PORT
-		envVars:
-			- key: DJANGO_SECRET_KEY
-				generateValue: true
-			- key: DJANGO_DEBUG
-				value: "False"
-			- key: DJANGO_CORS_ORIGINS
-				value: https://aacma-frontend.onrender.com
-			- key: PYTHON_VERSION
-				value: 3.11.7
+  - type: web
+    name: aacma-backend
+    env: python
+    region: oregon
+    plan: free
+    rootDir: aacma_backend
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+    startCommand: gunicorn aacma.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_CORS_ORIGINS
+        value: https://aacma-frontend.onrender.com
+      - key: PYTHON_VERSION
+        value: 3.11.7
 
-	- type: web
-		name: aacma-frontend
-		env: node
-		region: oregon
-		plan: free
-		buildCommand: |
-			corepack enable
-			pnpm install --frozen-lockfile
-			pnpm build
-		startCommand: pnpm start
-		envVars:
-			- key: NODE_VERSION
-				value: 20.11.1
-			- key: NEXT_PUBLIC_API_URL
-				value: https://aacma-backend.onrender.com
-			- key: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-				sync: false
+  - type: web
+    name: aacma-frontend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: |
+      corepack enable
+      pnpm install --frozen-lockfile
+      pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: NEXT_PUBLIC_API_URL
+        value: https://aacma-backend.onrender.com
+      - key: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+        value: "your_actual_google_maps_api_key_here" # Add your key here or set it in Render Dashboard
