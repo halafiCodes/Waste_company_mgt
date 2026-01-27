@@ -57,8 +57,9 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react"
-import { type User, ROLES } from "@/lib/rbac/types"
+import { type User, type Role } from "@/lib/rbac/types"
 import { authorizedGet, authorizedPost } from "@/lib/api/client"
+import { useRoles } from "@/lib/rbac/use-roles"
 
 interface AdminDashboardProps {
   user: User
@@ -124,7 +125,15 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
     password: "TempPass123!",
   })
 
-  const role = ROLES[user.roleId]
+  const { roles } = useRoles()
+  const role = user.role ?? roles.find((item) => item.id === user.roleId) ?? ({
+    id: user.roleId,
+    name: "",
+    slug: "",
+    level: "",
+    authorityType: "",
+    description: "",
+  } as Role)
 
   const normalize = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
 
@@ -969,7 +978,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(ROLES).map((r) => (
+                  {roles.map((r) => (
                     <SelectItem key={r.id} value={String(r.id)}>
                       {r.name}
                     </SelectItem>

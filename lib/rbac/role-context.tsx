@@ -3,7 +3,8 @@
 import React from "react"
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
-import { type User, type RoleId, ROLES, ROLE_PERMISSIONS, hasPermission, getRoleRoutePath, MOCK_CENTRAL_AUTHORITY_USERS } from "./types"
+import { type User, type RoleId, ROLE_PERMISSIONS, hasPermission, getRoleRoutePath } from "./types"
+import { login as apiLogin, fetchMe, storeTokens, clearTokens } from "@/lib/api/client"
 
 interface RoleContextType {
   currentUser: User | null
@@ -12,7 +13,6 @@ interface RoleContextType {
   logout: () => void
   checkPermission: (permission: string) => boolean
   getRedirectPath: () => string
-  switchUser: (userId: string) => void // For demo purposes
 }
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined)
@@ -20,19 +20,34 @@ const RoleContext = createContext<RoleContextType | undefined>(undefined)
 export function RoleProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
 
-  // Mock login function - in production, this would verify against database
-  const login = useCallback(async (email: string, _password: string): Promise<boolean> => {
-    // Find user by email in mock data
-    const user = MOCK_CENTRAL_AUTHORITY_USERS.find(u => u.email === email)
-    if (user) {
-      setCurrentUser(user)
-      return true
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    const auth = await apiLogin({ username: email, password })
+    storeTokens(auth.tokens)
+    const apiUser = await fetchMe()
+    if (!apiUser.role?.id) {
+      clearTokens()
+      return false
     }
-    return false
+    setCurrentUser({
+      id: String(apiUser.id),
+      name: `${apiUser.first_name} ${apiUser.last_name}`.trim() || apiUser.username,
+      email: apiUser.email,
+      roleId: apiUser.role.id as RoleId,
+      role: {
+        id: apiUser.role.id as RoleId,
+        name: apiUser.role.name ?? "",
+        slug: apiUser.role.slug ?? "",
+        level: "",
+        authorityType: "",
+        description: apiUser.role.description ?? "",
+      },
+    })
+    return true
   }, [])
 
   const logout = useCallback(() => {
     setCurrentUser(null)
+    clearTokens()
   }, [])
 
   // Check if current user has a specific permission
@@ -44,16 +59,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   // Get the redirect path based on user's role
   const getRedirectPath = useCallback((): string => {
     if (!currentUser) return "/central-authority"
-    return getRoleRoutePath(currentUser.roleId)
+    return getRoleRoutePath(currentUser.role)
   }, [currentUser])
-
-  // Switch user for demo purposes
-  const switchUser = useCallback((userId: string) => {
-    const user = MOCK_CENTRAL_AUTHORITY_USERS.find(u => u.id === userId)
-    if (user) {
-      setCurrentUser(user)
-    }
-  }, [])
 
   return (
     <RoleContext.Provider
@@ -64,7 +71,6 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         logout,
         checkPermission,
         getRedirectPath,
-        switchUser,
       }}
     >
       {children}
@@ -107,7 +113,7 @@ export function withRoleProtection<P extends object>(
             <p className="text-muted-foreground">
               You do not have permission to access this page.
               <br />
-              Required roles: {allowedRoles.map(r => ROLES[r].name).join(", ")}
+              Required roles: {allowedRoles.join(", ")}
             </p>
           </div>
         </div>

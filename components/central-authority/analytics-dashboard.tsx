@@ -33,8 +33,9 @@ import {
   Target,
   Truck,
 } from "lucide-react"
-import { type User, ROLES } from "@/lib/rbac/types"
+import { type User, type Role } from "@/lib/rbac/types"
 import { authorizedGet } from "@/lib/api/client"
+import { useRoles } from "@/lib/rbac/use-roles"
 import {
   ChartContainer,
   ChartTooltip,
@@ -70,7 +71,15 @@ export function AnalyticsDashboard({ user, onLogout }: AnalyticsDashboardProps) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const role = ROLES[user.roleId]
+  const { roles } = useRoles()
+  const role = user.role ?? roles.find((item) => item.id === user.roleId) ?? ({
+    id: user.roleId,
+    name: "",
+    slug: "",
+    level: "",
+    authorityType: "",
+    description: "",
+  } as Role)
 
   const stats = useMemo(() => [
     { title: "Collection Requests", value: analytics.totals.collection_requests.toLocaleString(), change: "", trend: "up", icon: Truck },

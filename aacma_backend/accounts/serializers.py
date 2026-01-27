@@ -9,8 +9,8 @@ User = get_user_model()
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
-        fields = "__all__"
-        read_only_fields = ["id", "created_at"]
+        fields = ["id", "name", "slug", "description"]
+        read_only_fields = ["id"]
 
 
 class UserSerializer(serializers.ModelSerializer):

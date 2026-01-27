@@ -47,6 +47,7 @@ import {
   FileText,
 } from "lucide-react"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
+import { useRoles } from "@/lib/rbac/use-roles"
 
 interface CentralAuthorityDashboardProps {
   user: { role: string; name: string }
@@ -93,13 +94,6 @@ const initiatives = [
   { id: "SI-07", name: "Contractor Performance Reform", sponsor: "Directorate", status: "at_risk", progress: 41, impact: "Critical" },
 ]
 
-const rolesMatrix = [
-  { name: "Directorate", scope: "City-wide", approvals: "All strategic", access: "Full" },
-  { name: "Strategic Authority", scope: "Policy & oversight", approvals: "Policies, budgets", access: "High" },
-  { name: "Operations", scope: "Field execution", approvals: "Fleet, routes", access: "Medium" },
-  { name: "Audit & Compliance", scope: "Controls", approvals: "Exceptions", access: "High" },
-]
-
 const executiveReports = [
   { title: "Collection Performance", period: "MTD", coverage: "87%", recycling: "24%", incidents: 12 },
   { title: "Budget Utilization", period: "Q1", coverage: "62%", recycling: "—", incidents: 0 },
@@ -110,6 +104,7 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeTab, setActiveTab] = useState("strategic-overview")
   const [searchQuery, setSearchQuery] = useState("")
+  const { roles } = useRoles()
 
   const menuItems = [
     { id: "strategic-overview", label: "Strategic Overview", icon: BarChart3 },
@@ -483,13 +478,13 @@ export function CentralAuthorityDashboard({ user, onLogout }: CentralAuthorityDa
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {rolesMatrix.map((role) => (
-                        <TableRow key={role.name}>
+                      {roles.map((role) => (
+                        <TableRow key={role.id}>
                           <TableCell className="font-medium">{role.name}</TableCell>
-                          <TableCell>{role.scope}</TableCell>
-                          <TableCell>{role.approvals}</TableCell>
+                          <TableCell>{role.description || "—"}</TableCell>
+                          <TableCell>{role.slug || "—"}</TableCell>
                           <TableCell>
-                            <Badge variant={role.access === "Full" ? "default" : "secondary"}>{role.access}</Badge>
+                            <Badge variant={role.id === 1 ? "default" : "secondary"}>Level {role.id}</Badge>
                           </TableCell>
                           <TableCell className="text-right">
                             <Button size="sm" variant="outline" className="bg-transparent">Manage</Button>

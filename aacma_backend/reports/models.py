@@ -69,3 +69,53 @@ class CityWideReport(models.Model):
     def __str__(self) -> str:
         return self.title
 
+
+class DailyCompanyReport(models.Model):
+    """
+    Daily operational report submitted by waste companies.
+    """
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    company = models.ForeignKey(
+        "companies.WasteCompany",
+        on_delete=models.CASCADE,
+        related_name="daily_reports",
+    )
+    report_date = models.DateField()
+    total_waste_kg = models.FloatField(default=0)
+    waste_organic_kg = models.FloatField(default=0)
+    waste_plastic_kg = models.FloatField(default=0)
+    waste_paper_kg = models.FloatField(default=0)
+    waste_metal_kg = models.FloatField(default=0)
+    waste_electronic_kg = models.FloatField(default=0)
+    waste_hazardous_kg = models.FloatField(default=0)
+    service_requests_completed = models.IntegerField(default=0)
+    areas_covered = models.TextField(blank=True)
+    trucks_used = models.IntegerField(default=0)
+    distance_traveled_km = models.FloatField(default=0)
+    missed_pickups = models.IntegerField(default=0)
+    disposal_site = models.CharField(max_length=255, blank=True)
+    recycled_kg = models.FloatField(default=0)
+    disposed_kg = models.FloatField(default=0)
+    safety_incidents = models.TextField(blank=True)
+    photo_evidence = models.ImageField(upload_to="daily_reports/", null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    approved_by = models.ForeignKey(
+        "accounts.User", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-report_date", "-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.company} {self.report_date}"
+

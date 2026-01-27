@@ -4,6 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import WasteReport, ReportComment
+from notifications.models import Notification
+from accounts.models import User
 from .serializers import WasteReportSerializer, ReportCommentSerializer
 from accounts.permissions import IsResident, IsCentralAuthority
 
@@ -20,7 +22,21 @@ class ResidentWasteReportViewSet(viewsets.ModelViewSet):
         return WasteReport.objects.filter(resident=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(resident=self.request.user)
+        report = serializer.save(resident=self.request.user)
+        supervisors = User.objects.filter(role__slug="supervisor")
+        for supervisor in supervisors:
+            Notification.objects.create(
+                user=supervisor,
+                notification_type="complaint_update",
+                title="New Resident Complaint",
+                message=f"{report.report_type} reported at {report.location_address}",
+                data={
+                    "report_id": report.id,
+                    "latitude": report.latitude,
+                    "longitude": report.longitude,
+                    "address": report.location_address,
+                },
+            )
 
 
 class CentralWasteReportViewSet(viewsets.ModelViewSet):

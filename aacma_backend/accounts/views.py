@@ -16,7 +16,9 @@ from .serializers import (
     UserSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
+    RoleSerializer,
 )
+from .models import Role
 from .permissions import IsAdmin, IsCentralAuthority
 
 User = get_user_model()
@@ -150,6 +152,12 @@ class AdminUserViewSet(viewsets.ModelViewSet):
         user.is_active = True
         user.save()
         return Response({"detail": "User activated"})
+
+
+class RoleViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Role.objects.all().order_by("id")
+    serializer_class = RoleSerializer
+    permission_classes = [permissions.AllowAny]
 
 
 @api_view(["GET"])

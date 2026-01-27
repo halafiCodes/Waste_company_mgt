@@ -53,7 +53,8 @@ import {
   Gavel,
   Globe,
 } from "lucide-react"
-import { type User, ROLES } from "@/lib/rbac/types"
+import { type User, type Role } from "@/lib/rbac/types"
+import { useRoles } from "@/lib/rbac/use-roles"
 import { authorizedGet, authorizedPost } from "@/lib/api/client"
 
 type Policy = {
@@ -77,18 +78,22 @@ type Approval = {
   decisionNotes?: string
 }
 
+type CityReport = {
+  id: number
+  title: string
+  period_start?: string
+  period_end?: string
+  created_at?: string
+  total_requests?: number
+  total_waste_generated_tons?: number
+  completion_rate?: number
+}
+
 interface DirectorateDashboardProps {
   user: User
   onLogout: () => void
 }
 
-// Mock data for strategic initiatives
-const mockInitiatives = [
-  { id: "I001", name: "Zero Waste by 2030", progress: 35, status: "on_track", budget: "50M ETB" },
-  { id: "I002", name: "Fleet Modernization", progress: 60, status: "on_track", budget: "120M ETB" },
-  { id: "I003", name: "Digital Transformation", progress: 45, status: "at_risk", budget: "30M ETB" },
-  { id: "I004", name: "Recycling Infrastructure", progress: 25, status: "delayed", budget: "80M ETB" },
-]
 
 export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardProps) {
   const [activeTab, setActiveTab] = useState("overview")
@@ -96,10 +101,24 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
   const [showPolicyModal, setShowPolicyModal] = useState(false)
   const [policies, setPolicies] = useState<Policy[]>([])
   const [approvals, setApprovals] = useState<Approval[]>([])
+  const [reports, setReports] = useState<CityReport[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [submittingPolicy, setSubmittingPolicy] = useState(false)
   const [processingApprovalId, setProcessingApprovalId] = useState<number | null>(null)
+  const [reportModalOpen, setReportModalOpen] = useState(false)
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const today = useMemo(() => new Date(), [])
+  const startOfMonth = useMemo(() => {
+    const d = new Date()
+    d.setDate(1)
+    return d
+  }, [])
+  const [reportForm, setReportForm] = useState({
+    title: "City Operations",
+    period_start: startOfMonth.toISOString().substring(0, 10),
+    period_end: today.toISOString().substring(0, 10),
+  })
   const [policyForm, setPolicyForm] = useState({
     title: "",
     category: "Environmental",
@@ -107,7 +126,15 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
     effectiveDate: "",
   })
 
-  const role = ROLES[user.roleId]
+  const { roles } = useRoles()
+  const role = user.role ?? roles.find((item) => item.id === user.roleId) ?? ({
+    id: user.roleId,
+    name: "",
+    slug: "",
+    level: "",
+    authorityType: "",
+    description: "",
+  } as Role)
 
   const normalizeList = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
 
@@ -115,9 +142,10 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
     setLoading(true)
     setError(null)
     try {
-      const [policyRes, approvalRes] = await Promise.all([
+      const [policyRes, approvalRes, reportRes] = await Promise.all([
         authorizedGet<any>("/central/governance/policies/"),
         authorizedGet<any>("/central/governance/approvals/"),
+        authorizedGet<any>("/central/reports/citywide/"),
       ])
 
       const normalizedPolicies: Policy[] = normalizeList(policyRes).map((p: any) => ({
@@ -143,6 +171,7 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
 
       setPolicies(normalizedPolicies)
       setApprovals(normalizedApprovals)
+      setReports(normalizeList(reportRes))
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load data"
       setError(message)
@@ -166,6 +195,27 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
       { title: "Total Policies", value: `${policies.length}`, change: "", trend: "up", icon: Users },
     ]
   }, [approvals, policies])
+
+  const initiatives = useMemo(() => {
+    const grouped = policies.reduce<Record<string, { total: number; active: number }>>((acc, policy) => {
+      const key = policy.category || "General"
+      if (!acc[key]) acc[key] = { total: 0, active: 0 }
+      acc[key].total += 1
+      if (policy.status === "active") acc[key].active += 1
+      return acc
+    }, {})
+    return Object.entries(grouped).map(([category, values], index) => {
+      const progress = values.total ? Math.round((values.active / values.total) * 100) : 0
+      const status = progress >= 70 ? "on_track" : progress >= 40 ? "at_risk" : "delayed"
+      return {
+        id: `CAT-${index + 1}`,
+        name: `${category} Policy Program`,
+        progress,
+        status,
+        total: values.total,
+      }
+    })
+  }, [policies])
 
   const handleCreatePolicy = async () => {
     setSubmittingPolicy(true)
@@ -199,6 +249,26 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
       setError(message)
     } finally {
       setProcessingApprovalId(null)
+    }
+  }
+
+  const handleGenerateReport = async () => {
+    setReportSubmitting(true)
+    setError(null)
+    try {
+      const payload = {
+        title: reportForm.title || "City Operations",
+        period_start: reportForm.period_start,
+        period_end: reportForm.period_end,
+      }
+      await authorizedPost("/central/reports/citywide/generate/", payload)
+      setReportModalOpen(false)
+      await loadData()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to generate report"
+      setError(message)
+    } finally {
+      setReportSubmitting(false)
     }
   }
 
@@ -415,7 +485,12 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-6">
-                    {mockInitiatives.map((initiative) => (
+                    {initiatives.length === 0 && (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        No initiatives yet. Create policies to build programs.
+                      </div>
+                    )}
+                    {initiatives.map((initiative) => (
                       <div key={initiative.id} className="space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -427,7 +502,7 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
                               {initiative.status.replace("_", " ")}
                             </Badge>
                           </div>
-                          <span className="text-sm text-muted-foreground">Budget: {initiative.budget}</span>
+                          <span className="text-sm text-muted-foreground">Policies: {initiative.total}</span>
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="h-2 flex-1 rounded-full bg-secondary">
@@ -537,7 +612,7 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {Object.values(ROLES).map((role) => (
+                {roles.map((role) => (
                   <Card key={role.id}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
@@ -546,7 +621,7 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
                           Level {role.id}
                         </Badge>
                       </div>
-                      <CardDescription>{role.level}</CardDescription>
+                      <CardDescription>{role.description || role.level || "Role"}</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-muted-foreground mb-4">{role.description}</p>
@@ -639,23 +714,150 @@ export function DirectorateDashboard({ user, onLogout }: DirectorateDashboardPro
             </Card>
           )}
 
-          {(activeTab === "initiatives" || activeTab === "reports") && (
+          {activeTab === "initiatives" && (
             <Card>
-              <CardContent className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-lg font-semibold">
-                    {menuItems.find(m => m.id === activeTab)?.label}
-                  </h3>
-                  <p className="mt-2 text-muted-foreground">
-                    This section is under development.
-                  </p>
+              <CardHeader>
+                <CardTitle>Strategic Initiatives</CardTitle>
+                <CardDescription>Programs derived from policy coverage</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {initiatives.length === 0 && (
+                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      No initiatives yet. Create policies to build programs.
+                    </div>
+                  )}
+                  {initiatives.map((initiative) => (
+                    <div key={initiative.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{initiative.name}</span>
+                          <Badge variant={
+                            initiative.status === "on_track" ? "default" :
+                            initiative.status === "at_risk" ? "secondary" : "destructive"
+                          }>
+                            {initiative.status.replace("_", " ")}
+                          </Badge>
+                        </div>
+                        <span className="text-sm text-muted-foreground">Policies: {initiative.total}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="h-2 flex-1 rounded-full bg-secondary">
+                          <div
+                            className={`h-2 rounded-full ${
+                              initiative.status === "on_track" ? "bg-primary" :
+                              initiative.status === "at_risk" ? "bg-warning" : "bg-destructive"
+                            }`}
+                            style={{ width: `${initiative.progress}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-medium w-12">{initiative.progress}%</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
           )}
+
+          {activeTab === "reports" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">Executive Reports</h3>
+                  <p className="text-sm text-muted-foreground">City-wide performance summaries</p>
+                </div>
+                <Button onClick={() => setReportModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Generate Report
+                </Button>
+              </div>
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead>Requests</TableHead>
+                        <TableHead>Completion</TableHead>
+                        <TableHead>Generated</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reports.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                            No executive reports yet.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {reports.map((report) => (
+                        <TableRow key={report.id}>
+                          <TableCell className="font-medium">{report.title}</TableCell>
+                          <TableCell>
+                            {report.period_start} – {report.period_end}
+                          </TableCell>
+                          <TableCell>{report.total_requests ?? report.total_waste_generated_tons ?? "—"}</TableCell>
+                          <TableCell>{report.completion_rate ? `${report.completion_rate}%` : "—"}</TableCell>
+                          <TableCell>{formatDate(report.created_at)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Generate Report Modal */}
+      <Dialog open={reportModalOpen} onOpenChange={setReportModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Generate City Report</DialogTitle>
+            <DialogDescription>Select a period and title for the report</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="reportTitle">Title</Label>
+              <Input
+                id="reportTitle"
+                value={reportForm.title}
+                onChange={(e) => setReportForm({ ...reportForm, title: e.target.value })}
+                placeholder="City Operations"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="periodStart">Start</Label>
+                <Input
+                  id="periodStart"
+                  type="date"
+                  value={reportForm.period_start}
+                  onChange={(e) => setReportForm({ ...reportForm, period_start: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="periodEnd">End</Label>
+                <Input
+                  id="periodEnd"
+                  type="date"
+                  value={reportForm.period_end}
+                  onChange={(e) => setReportForm({ ...reportForm, period_end: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleGenerateReport} disabled={reportSubmitting}>
+              {reportSubmitting ? "Generating..." : "Generate"}
+            </Button>
+            <Button variant="outline" onClick={() => setReportModalOpen(false)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Policy Modal */}
       <Dialog open={showPolicyModal} onOpenChange={setShowPolicyModal}>

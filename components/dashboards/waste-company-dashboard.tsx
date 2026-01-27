@@ -59,7 +59,9 @@ import {
   RotateCcw,
 } from "lucide-react"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
-import { authorizedGet, authorizedPost, authorizedPut } from "@/lib/api/client"
+import { authorizedGet, authorizedPost, authorizedPostForm, authorizedPut } from "@/lib/api/client"
+import { GoogleMapView, type MapMarker } from "@/components/maps/google-map"
+import { jsPDF } from "jspdf"
 
 interface WasteCompanyDashboardProps {
   user: { role: string; name: string }
@@ -77,6 +79,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
   const [drivers, setDrivers] = useState<any[]>([])
   const [routes, setRoutes] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
+  const [dailyReports, setDailyReports] = useState<any[]>([])
   const [selectedReport, setSelectedReport] = useState<"daily" | "fleet" | "driver" | "route">("daily")
   const [companyStats, setCompanyStats] = useState<{ fleet_size: number; employee_count: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -100,6 +103,30 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
   const [assigningDriver, setAssigningDriver] = useState(false)
   const [assigningRoute, setAssigningRoute] = useState(false)
+  const [selectedRouteMapId, setSelectedRouteMapId] = useState<number | null>(null)
+  const [selectedDriverMapId, setSelectedDriverMapId] = useState<number | null>(null)
+  const [updatingLocationId, setUpdatingLocationId] = useState<number | null>(null)
+  const [dailyReportSubmitting, setDailyReportSubmitting] = useState(false)
+  const [dailyReportForm, setDailyReportForm] = useState({
+    report_date: new Date().toISOString().substring(0, 10),
+    total_waste_kg: "",
+    waste_organic_kg: "",
+    waste_plastic_kg: "",
+    waste_paper_kg: "",
+    waste_metal_kg: "",
+    waste_electronic_kg: "",
+    waste_hazardous_kg: "",
+    service_requests_completed: "",
+    areas_covered: "",
+    trucks_used: "",
+    distance_traveled_km: "",
+    missed_pickups: "",
+    disposal_site: "",
+    recycled_kg: "",
+    disposed_kg: "",
+    safety_incidents: "",
+  })
+  const [dailyReportPhoto, setDailyReportPhoto] = useState<File | null>(null)
 
   useEffect(() => {
     const normalize = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
@@ -108,12 +135,13 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
       setLoading(true)
       setError(null)
       try {
-        const [statsRes, vehicleRes, driverRes, routeRes, requestRes] = await Promise.all([
+        const [statsRes, vehicleRes, driverRes, routeRes, requestRes, dailyRes] = await Promise.all([
           authorizedGet<{ fleet_size: number; employee_count: number }>("/company/dashboard/"),
           authorizedGet<any>("/fleet/vehicles/"),
           authorizedGet<any>("/fleet/drivers/"),
           authorizedGet<any>("/routes/"),
           authorizedGet<any>("/collections/company/requests/"),
+          authorizedGet<any>("/reports/daily/"),
         ])
 
         setCompanyStats(statsRes)
@@ -124,6 +152,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
           progress: r.total_stops ? Math.round(((r.completed_stops ?? 0) / r.total_stops) * 100) : 0,
         })))
         setRequests(normalize(requestRes))
+        setDailyReports(normalize(dailyRes))
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load data"
         setError(message)
@@ -137,10 +166,11 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
 
   const reload = async () => {
     const normalize = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
-    const [vehicleRes, driverRes, routeRes] = await Promise.all([
+    const [vehicleRes, driverRes, routeRes, dailyRes] = await Promise.all([
       authorizedGet<any>("/fleet/vehicles/"),
       authorizedGet<any>("/fleet/drivers/"),
       authorizedGet<any>("/routes/"),
+      authorizedGet<any>("/reports/daily/"),
     ])
     setVehicles(normalize(vehicleRes))
     setDrivers(normalize(driverRes))
@@ -148,6 +178,120 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
       ...r,
       progress: r.total_stops ? Math.round(((r.completed_stops ?? 0) / r.total_stops) * 100) : 0,
     })))
+    setDailyReports(normalize(dailyRes))
+  }
+
+  const randomizeLocation = () => {
+    const baseLat = 8.9806
+    const baseLng = 38.7578
+    const jitter = () => (Math.random() - 0.5) * 0.04
+    return { lat: baseLat + jitter(), lng: baseLng + jitter() }
+  }
+
+  const updateVehicleLocation = async (vehicleId: number) => {
+    setUpdatingLocationId(vehicleId)
+    setError(null)
+    try {
+      const { lat, lng } = randomizeLocation()
+      await authorizedPut(`/fleet/vehicles/${vehicleId}/location/`, {
+        last_location_lat: lat,
+        last_location_lng: lng,
+      })
+      await reload()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to update location"
+      setError(msg)
+    } finally {
+      setUpdatingLocationId(null)
+    }
+  }
+
+  const updateDriverLocation = async (driver: any) => {
+    const vehicleId = typeof driver.assigned_vehicle === "number"
+      ? driver.assigned_vehicle
+      : vehicles.find((v) => v.plate_number === driver.assigned_vehicle)?.id
+
+    if (!vehicleId) {
+      setError("Assign a vehicle to this driver first.")
+      return
+    }
+    await updateVehicleLocation(vehicleId)
+  }
+
+  const handleSubmitDailyReport = async () => {
+    setDailyReportSubmitting(true)
+    setError(null)
+    try {
+      const formData = new FormData()
+      Object.entries(dailyReportForm).forEach(([key, value]) => {
+        if (value !== "") {
+          formData.append(key, String(value))
+        }
+      })
+      if (dailyReportPhoto) {
+        formData.append("photo_evidence", dailyReportPhoto)
+      }
+      await authorizedPostForm("/reports/daily/", formData)
+      await reload()
+      setDailyReportForm({
+        report_date: new Date().toISOString().substring(0, 10),
+        total_waste_kg: "",
+        waste_organic_kg: "",
+        waste_plastic_kg: "",
+        waste_paper_kg: "",
+        waste_metal_kg: "",
+        waste_electronic_kg: "",
+        waste_hazardous_kg: "",
+        service_requests_completed: "",
+        areas_covered: "",
+        trucks_used: "",
+        distance_traveled_km: "",
+        missed_pickups: "",
+        disposal_site: "",
+        recycled_kg: "",
+        disposed_kg: "",
+        safety_incidents: "",
+      })
+      setDailyReportPhoto(null)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to submit daily report"
+      setError(msg)
+    } finally {
+      setDailyReportSubmitting(false)
+    }
+  }
+
+  const downloadDailyReportPdf = (report: any) => {
+    const doc = new jsPDF()
+    doc.setFontSize(16)
+    doc.text("Daily Waste Report", 14, 16)
+    doc.setFontSize(10)
+    const lines = [
+      `Date: ${report.report_date}`,
+      `Total Waste (kg): ${report.total_waste_kg}`,
+      `Organic: ${report.waste_organic_kg} kg`,
+      `Plastic: ${report.waste_plastic_kg} kg`,
+      `Paper: ${report.waste_paper_kg} kg`,
+      `Metal: ${report.waste_metal_kg} kg`,
+      `Electronic: ${report.waste_electronic_kg} kg`,
+      `Hazardous: ${report.waste_hazardous_kg} kg`,
+      `Requests Completed: ${report.service_requests_completed}`,
+      `Areas Covered: ${report.areas_covered}`,
+      `Trucks Used: ${report.trucks_used}`,
+      `Distance Traveled (km): ${report.distance_traveled_km}`,
+      `Missed Pickups: ${report.missed_pickups}`,
+      `Disposal Site: ${report.disposal_site}`,
+      `Recycled (kg): ${report.recycled_kg}`,
+      `Disposed (kg): ${report.disposed_kg}`,
+      `Safety Incidents: ${report.safety_incidents || "None"}`,
+      `Status: ${report.status}`,
+    ]
+    let y = 28
+    lines.forEach((line) => {
+      doc.text(line, 14, y)
+      y += 6
+    })
+    doc.save(`daily-report-${report.id}.pdf`)
   }
 
   const handleAddVehicle = async () => {
@@ -250,6 +394,39 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
   }, [vehicles, drivers, requests])
 
   const activeRoutes = useMemo(() => routes.filter((r) => r.status === "in_progress"), [routes])
+  const selectedRoute = useMemo(() => routes.find((r) => r.id === selectedRouteMapId) ?? routes[0], [routes, selectedRouteMapId])
+  const routeStops = useMemo(() => (selectedRoute?.stops ?? []).map((stop: any, index: number) => ({
+    id: `stop-${stop.id ?? index}`,
+    position: { lat: Number(stop.latitude), lng: Number(stop.longitude) },
+    label: String(stop.sequence_number ?? index + 1),
+    title: stop.address,
+  })), [selectedRoute])
+  const routePath = useMemo(() => routeStops.map((stop: any) => stop.position), [routeStops])
+
+  const vehicleMarkers = useMemo<MapMarker[]>(() => {
+    return vehicles
+      .filter((v) => typeof v.last_location_lat === "number" && typeof v.last_location_lng === "number")
+      .map((v) => ({
+        id: v.id,
+        position: { lat: Number(v.last_location_lat), lng: Number(v.last_location_lng) },
+        title: v.plate_number,
+      }))
+  }, [vehicles])
+
+  const driverMapMarkers = useMemo<MapMarker[]>(() => {
+    const selectedDriver = drivers.find((d) => d.id === selectedDriverMapId)
+    if (selectedDriver?.assigned_vehicle) {
+      const assignedVehicle = vehicles.find((v) => v.id === selectedDriver.assigned_vehicle || v.plate_number === selectedDriver.assigned_vehicle)
+      if (assignedVehicle?.last_location_lat && assignedVehicle?.last_location_lng) {
+        return [{
+          id: `driver-${selectedDriver.id}`,
+          position: { lat: Number(assignedVehicle.last_location_lat), lng: Number(assignedVehicle.last_location_lng) },
+          title: selectedDriver.full_name || "Driver",
+        }]
+      }
+    }
+    return vehicleMarkers
+  }, [drivers, selectedDriverMapId, vehicles, vehicleMarkers])
   const pendingRequestsList = useMemo(() => requests.filter((r) => r.status === "pending"), [requests])
 
   const dailySummary = useMemo(() => {
@@ -715,9 +892,13 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setSelectedDriverMapId(null)}>
                                   <MapPin className="mr-2 h-4 w-4" />
                                   Track Location
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => updateVehicleLocation(vehicle.id)}>
+                                  <Navigation className="mr-2 h-4 w-4" />
+                                  {updatingLocationId === vehicle.id ? "Updating..." : "Update Location"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setAssignDriverModal({ open: true, vehicleId: vehicle.id })}>
                                   <Users className="mr-2 h-4 w-4" />
@@ -758,6 +939,57 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
               </div>
 
               <Card>
+                <CardHeader>
+                  <CardTitle>Driver & Vehicle Tracking</CardTitle>
+                  <CardDescription>Live map of assigned vehicles and driver positions</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant={selectedDriverMapId ? "outline" : "default"}
+                      onClick={() => setSelectedDriverMapId(null)}
+                    >
+                      All Vehicles
+                    </Button>
+                    {drivers.map((driver) => (
+                      <Button
+                        key={driver.id}
+                        size="sm"
+                        variant={selectedDriverMapId === driver.id ? "default" : "outline"}
+                        onClick={() => setSelectedDriverMapId(driver.id)}
+                      >
+                        {driver.full_name || `Driver ${driver.id}`}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {drivers.map((driver) => (
+                      <Button
+                        key={`update-${driver.id}`}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => updateDriverLocation(driver)}
+                        disabled={updatingLocationId !== null}
+                      >
+                        Update {driver.full_name || `Driver ${driver.id}`} Location
+                      </Button>
+                    ))}
+                  </div>
+                  <GoogleMapView
+                    markers={driverMapMarkers}
+                    zoom={12}
+                    height="320px"
+                  />
+                  {driverMapMarkers.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No live vehicle locations available yet.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
                 <CardContent className="p-0">
                   <Table>
                     <TableHeader>
@@ -778,7 +1010,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                             <div className="flex items-center gap-3">
                               <Avatar>
                                 <AvatarFallback className="bg-primary/10 text-primary">
-                                  {(driver.full_name || "").split(" ").map(n => n[0]).join("") || "DR"}
+                                  {(driver.full_name || "").split(" ").map((n: string) => n[0]).join("") || "DR"}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
@@ -819,6 +1051,10 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                                   <Truck className="mr-2 h-4 w-4" />
                                   Assign Vehicle
                                 </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => updateDriverLocation(driver)}>
+                                  <MapPin className="mr-2 h-4 w-4" />
+                                  {updatingLocationId ? "Updating..." : "Update Location"}
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setAssignRouteModal({ open: true, vehicleId: driver.assigned_vehicle || null })}>
                                   <Navigation className="mr-2 h-4 w-4" />
                                   Assign Route
@@ -857,9 +1093,41 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                 </Button>
               </div>
 
+              <Card>
+                <CardHeader>
+                  <CardTitle>Route Map</CardTitle>
+                  <CardDescription>Stops and path for the selected route</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {routes.map((route) => (
+                      <Button
+                        key={route.id}
+                        size="sm"
+                        variant={selectedRoute?.id === route.id ? "default" : "outline"}
+                        onClick={() => setSelectedRouteMapId(route.id)}
+                      >
+                        {route.name}
+                      </Button>
+                    ))}
+                  </div>
+                  <GoogleMapView
+                    markers={routeStops}
+                    path={routePath}
+                    zoom={12}
+                    height="360px"
+                  />
+                  {routeStops.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No stops available for the selected route.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {routes.map((route) => (
-                  <Card key={route.id}>
+                  <Card key={route.id} onClick={() => setSelectedRouteMapId(route.id)} className="cursor-pointer">
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">{route.name}</CardTitle>
@@ -1021,6 +1289,228 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
 
           {activeTab === "reports" && (
             <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Daily Waste Report Submission</CardTitle>
+                  <CardDescription>Submit today’s operational summary for supervisor review</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Report Date</Label>
+                      <Input
+                        type="date"
+                        value={dailyReportForm.report_date}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, report_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Total Waste (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.total_waste_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, total_waste_kg: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Requests Completed</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.service_requests_completed}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, service_requests_completed: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Organic (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.waste_organic_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, waste_organic_kg: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Plastic (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.waste_plastic_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, waste_plastic_kg: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Paper (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.waste_paper_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, waste_paper_kg: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Metal (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.waste_metal_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, waste_metal_kg: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Electronic (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.waste_electronic_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, waste_electronic_kg: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Hazardous (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.waste_hazardous_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, waste_hazardous_kg: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Areas Covered</Label>
+                      <Input
+                        value={dailyReportForm.areas_covered}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, areas_covered: e.target.value })}
+                        placeholder="Bole, Yeka, Kirkos"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Trucks Used</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.trucks_used}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, trucks_used: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Distance Traveled (km)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.distance_traveled_km}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, distance_traveled_km: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Missed Pickups</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.missed_pickups}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, missed_pickups: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Disposal Site</Label>
+                      <Input
+                        value={dailyReportForm.disposal_site}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, disposal_site: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Safety Incidents</Label>
+                      <Input
+                        value={dailyReportForm.safety_incidents}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, safety_incidents: e.target.value })}
+                        placeholder="None"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Recycled (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.recycled_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, recycled_kg: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Disposed (kg)</Label>
+                      <Input
+                        type="number"
+                        value={dailyReportForm.disposed_kg}
+                        onChange={(e) => setDailyReportForm({ ...dailyReportForm, disposed_kg: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Photo Evidence (optional)</Label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setDailyReportPhoto(e.target.files?.[0] ?? null)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSubmitDailyReport} disabled={dailyReportSubmitting}>
+                      {dailyReportSubmitting ? "Submitting..." : "Submit Daily Report"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Submitted Daily Reports</CardTitle>
+                  <CardDescription>Track supervisor approvals</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Total Waste (kg)</TableHead>
+                        <TableHead>Requests Completed</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Export</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dailyReports.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                            No daily reports submitted yet.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        dailyReports.map((report) => (
+                          <TableRow key={report.id}>
+                            <TableCell>{report.report_date}</TableCell>
+                            <TableCell>{report.total_waste_kg}</TableCell>
+                            <TableCell>{report.service_requests_completed}</TableCell>
+                            <TableCell>
+                              <Badge variant={report.status === "approved" ? "default" : report.status === "rejected" ? "destructive" : "secondary"}>
+                                {report.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="outline" onClick={() => downloadDailyReportPdf(report)}>
+                                Export PDF
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {[{
                   id: "daily" as const,
@@ -1073,7 +1563,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => exportCSV(reportConfig[selectedReport].rows, `${reportConfig[selectedReport].title}.csv`)}
+                      onClick={() => exportCSV(reportConfig[selectedReport].rows as Record<string, any>[], `${reportConfig[selectedReport].title}.csv`)}
                       disabled={!reportConfig[selectedReport].rows.length}
                     >
                       Export CSV
@@ -1081,7 +1571,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => reportConfig[selectedReport].rows.length && exportPDF(reportConfig[selectedReport].title, reportConfig[selectedReport].rows)}
+                      onClick={() => reportConfig[selectedReport].rows.length && exportPDF(reportConfig[selectedReport].title, reportConfig[selectedReport].rows as Record<string, any>[])}
                       disabled={!reportConfig[selectedReport].rows.length}
                     >
                       Export PDF
@@ -1094,7 +1584,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            {Object.keys(reportConfig[selectedReport].rows[0]).map((col) => (
+                            {Object.keys(reportConfig[selectedReport].rows[0] as Record<string, any>).map((col) => (
                               <TableHead key={col}>{col.replace(/([A-Z])/g, " $1").trim()}</TableHead>
                             ))}
                           </TableRow>
@@ -1102,8 +1592,8 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                         <TableBody>
                           {reportConfig[selectedReport].rows.map((row, idx) => (
                             <TableRow key={idx}>
-                              {Object.keys(row).map((col) => (
-                                <TableCell key={col}>{row[col]}</TableCell>
+                              {Object.keys(row as Record<string, any>).map((col) => (
+                                <TableCell key={col}>{(row as Record<string, any>)[col]}</TableCell>
                               ))}
                             </TableRow>
                           ))}

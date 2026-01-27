@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Building2, LogIn, Shield, Users } from "lucide-react"
-import { type User, type RoleId, ROLES, MOCK_CENTRAL_AUTHORITY_USERS, getRoleBySlug } from "@/lib/rbac/types"
+import { type User, type RoleId } from "@/lib/rbac/types"
+import { useRoles } from "@/lib/rbac/use-roles"
 import { DirectorateDashboard } from "./directorate-dashboard"
 import { SupervisorDashboard } from "./supervisor-dashboard"
 import { AdminDashboard } from "./admin-dashboard"
@@ -42,6 +43,15 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const { roles } = useRoles()
+  const usernameByRole: Record<string, { username: string; password: string }> = {
+    directorate: { username: "directorate_admin", password: "Passw0rd!2026" },
+    supervisor: { username: "supervisor_ca", password: "Passw0rd!2026" },
+    admin: { username: "admin", password: "admin1234" },
+    it: { username: "it_ca", password: "Passw0rd!2026" },
+    audit: { username: "audit_ca", password: "Passw0rd!2026" },
+    analytics: { username: "analytics_ca", password: "Passw0rd!2026" },
+  }
 
   // Auto-resume session if tokens exist
   useEffect(() => {
@@ -50,8 +60,8 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
     const load = async () => {
       try {
         const apiUser = await fetchMe()
-        const role = getRoleBySlug(apiUser.role?.slug ?? "")
-        if (!role || apiUser.user_type !== "central_authority") {
+        const role = apiUser.role
+        if (!role?.id || apiUser.user_type !== "central_authority") {
           setError("Your account is not a central authority role.")
           clearTokens()
           return
@@ -61,7 +71,14 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
           name: `${apiUser.first_name} ${apiUser.last_name}`.trim() || apiUser.username,
           email: apiUser.email,
           roleId: role.id as RoleId,
-          role,
+          role: {
+            id: role.id as RoleId,
+            name: role.name ?? "",
+            slug: role.slug ?? "",
+            level: "",
+            authorityType: "",
+            description: role.description ?? "",
+          },
         })
       } catch (err) {
         clearTokens()
@@ -78,8 +95,8 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
     try {
       const auth = await login({ username: email.trim(), password: password.trim() })
       storeTokens(auth.tokens)
-      const role = getRoleBySlug(auth.user.role?.slug ?? "")
-      if (!role || auth.user.user_type !== "central_authority") {
+      const role = auth.user.role
+      if (!role?.id || auth.user.user_type !== "central_authority") {
         setError("Your account does not have a central authority role.")
         clearTokens()
         return
@@ -89,7 +106,14 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
         name: `${auth.user.first_name} ${auth.user.last_name}`.trim() || auth.user.username,
         email: auth.user.email,
         roleId: role.id as RoleId,
-        role,
+        role: {
+          id: role.id as RoleId,
+          name: role.name ?? "",
+          slug: role.slug ?? "",
+          level: "",
+          authorityType: "",
+          description: role.description ?? "",
+        },
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Login failed"
@@ -108,21 +132,12 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
         setError("Please select a role to demo")
         return
       }
-      const demo = MOCK_CENTRAL_AUTHORITY_USERS.find(u => u.id === selectedUserId)
-      if (!demo) {
+      const role = roles.find((r) => String(r.id) === selectedUserId)
+      if (!role) {
         setError("Invalid selection")
         return
       }
-      const role = ROLES[demo.roleId]
       // Map demo role to a real backend demo account
-      const usernameByRole: Record<string, { username: string; password: string }> = {
-        directorate: { username: "directorate_admin", password: "Passw0rd!2026" },
-        supervisor: { username: "supervisor_ca", password: "Passw0rd!2026" },
-        admin: { username: "admin", password: "admin1234" },
-        it: { username: "it_ca", password: "Passw0rd!2026" },
-        audit: { username: "audit_ca", password: "Passw0rd!2026" },
-        analytics: { username: "analytics_ca", password: "Passw0rd!2026" },
-      }
       const creds = usernameByRole[role.slug]
       if (!creds) {
         setError("Demo credentials not configured for this role.")
@@ -130,8 +145,8 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
       }
       const auth = await login({ username: creds.username, password: creds.password })
       storeTokens(auth.tokens)
-      const resolvedRole = getRoleBySlug(auth.user.role?.slug ?? "")
-      if (!resolvedRole || auth.user.user_type !== "central_authority") {
+      const resolvedRole = auth.user.role
+      if (!resolvedRole?.id || auth.user.user_type !== "central_authority") {
         setError("Demo account is not a central authority role.")
         clearTokens()
         return
@@ -141,7 +156,14 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
         name: `${auth.user.first_name} ${auth.user.last_name}`.trim() || auth.user.username,
         email: auth.user.email,
         roleId: resolvedRole.id as RoleId,
-        role: resolvedRole,
+        role: {
+          id: resolvedRole.id as RoleId,
+          name: resolvedRole.name ?? "",
+          slug: resolvedRole.slug ?? "",
+          level: "",
+          authorityType: "",
+          description: resolvedRole.description ?? "",
+        },
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Demo login failed"
@@ -271,12 +293,11 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
                   <SelectValue placeholder="Select a role to demo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_CENTRAL_AUTHORITY_USERS.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
+                  {roles.filter((r) => Boolean(usernameByRole[r.slug])).map((role) => (
+                    <SelectItem key={role.id} value={String(role.id)}>
                       <div className="flex items-center gap-2">
                         <Shield className="h-4 w-4" />
-                        <span>{ROLES[user.roleId].name}</span>
-                        <span className="text-muted-foreground">- {user.name}</span>
+                        <span>{role.name}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -310,7 +331,7 @@ export function CentralAuthorityEntry({ onBack }: CentralAuthorityEntryProps) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
-              {Object.values(ROLES).map((role) => (
+              {roles.map((role) => (
                 <div key={role.id} className="flex items-center gap-2 text-sm">
                   <div className={`h-2 w-2 rounded-full ${
                     role.id === 1 ? "bg-primary" :

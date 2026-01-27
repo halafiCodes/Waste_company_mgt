@@ -53,6 +53,7 @@ import {
 } from "lucide-react"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
 import { authorizedGet, authorizedPost } from "@/lib/api/client"
+import { GoogleMapPicker } from "@/components/maps/google-map-picker"
 
 interface ResidentPortalProps {
   user: { role: string; name: string }
@@ -67,6 +68,7 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [showRequestModal, setShowRequestModal] = useState(false)
   const [showComplaintModal, setShowComplaintModal] = useState(false)
+  const [showLocationModal, setShowLocationModal] = useState(false)
   const [showTrackingModal, setShowTrackingModal] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<any | null>(null)
 
@@ -78,6 +80,9 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
   const [complaintType, setComplaintType] = useState("")
   const [complaintDescription, setComplaintDescription] = useState("")
   const [complaintAddress, setComplaintAddress] = useState("")
+  const [complaintLocation, setComplaintLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [locationLabel, setLocationLabel] = useState("")
+  const [geoLoading, setGeoLoading] = useState(false)
   const [relatedRequestId, setRelatedRequestId] = useState<string | null>(null)
   const [requests, setRequests] = useState<any[]>(initialList)
   const [complaints, setComplaints] = useState<any[]>(initialList)
@@ -111,6 +116,43 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
     setRequests(normalize(reqRes))
     setComplaints(normalize(complRes))
     setNotifications(normalize(notifRes))
+  }
+
+  const reverseGeocode = async (lat: number, lng: number) => {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!apiKey) return
+    setGeoLoading(true)
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`
+      )
+      const data = await res.json()
+      const formatted = data?.results?.[0]?.formatted_address
+      if (formatted) {
+        setComplaintAddress(formatted)
+        setLocationLabel(formatted)
+      }
+    } catch (err) {
+      // ignore geocode errors, manual address still allowed
+    } finally {
+      setGeoLoading(false)
+    }
+  }
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported in this browser.")
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        setComplaintLocation(coords)
+        reverseGeocode(coords.lat, coords.lng)
+      },
+      () => setError("Unable to access your location. Please allow GPS permission."),
+      { enableHighAccuracy: true }
+    )
   }
 
   const handleNewRequest = async () => {
@@ -148,7 +190,8 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
   }
 
   const handleNewComplaint = async () => {
-    if (!complaintType || !complaintDescription || !complaintAddress) {
+    const resolvedAddress = complaintAddress || locationLabel
+    if (!complaintType || !complaintDescription || !resolvedAddress) {
       setError("Please fill issue type, description, and address.")
       return
     }
@@ -165,7 +208,9 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
       await authorizedPost("/complaints/resident/complaints/", {
         report_type: typeMap[complaintType] ?? "other",
         description: complaintDescription,
-        location_address: complaintAddress,
+        location_address: resolvedAddress,
+        latitude: complaintLocation?.lat ?? null,
+        longitude: complaintLocation?.lng ?? null,
         priority: "medium",
         related_request: relatedRequestId,
       })
@@ -174,6 +219,8 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
       setComplaintType("")
       setComplaintDescription("")
       setComplaintAddress("")
+      setComplaintLocation(null)
+      setLocationLabel("")
       setRelatedRequestId(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to submit complaint"
@@ -950,6 +997,20 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
                 onChange={(e) => setComplaintAddress(e.target.value)}
                 rows={2}
               />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setShowLocationModal(true)}>
+                  <MapPin className="mr-2 h-4 w-4" />
+                  Share Location
+                </Button>
+                {complaintLocation && (
+                  <span className="text-xs text-muted-foreground">
+                    {complaintLocation.lat.toFixed(5)}, {complaintLocation.lng.toFixed(5)}
+                  </span>
+                )}
+                {geoLoading && (
+                  <span className="text-xs text-muted-foreground">Resolving address...</span>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Related Request (Optional)</Label>
@@ -972,6 +1033,54 @@ export function ResidentPortal({ user, onLogout }: ResidentPortalProps) {
             <Button variant="outline" onClick={() => setShowComplaintModal(false)}>Cancel</Button>
             <Button onClick={handleNewComplaint} disabled={complaintSubmitting}>
               {complaintSubmitting ? "Submitting..." : "Submit Complaint"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Location Picker Modal */}
+      <Dialog open={showLocationModal} onOpenChange={setShowLocationModal}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Share Location</DialogTitle>
+            <DialogDescription>Select your complaint location</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={handleUseCurrentLocation}>
+                <MapPin className="mr-2 h-4 w-4" />
+                Use Current Location
+              </Button>
+              {complaintLocation && (
+                <span className="text-xs text-muted-foreground">
+                  {complaintLocation.lat.toFixed(5)}, {complaintLocation.lng.toFixed(5)}
+                </span>
+              )}
+              {locationLabel && (
+                <span className="text-xs text-muted-foreground">{locationLabel}</span>
+              )}
+            </div>
+            <GoogleMapPicker
+              value={complaintLocation}
+              onChange={(value) => {
+                setComplaintLocation(value)
+                reverseGeocode(value.lat, value.lng)
+              }}
+              height="360px"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLocationModal(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (locationLabel) {
+                  setComplaintAddress(locationLabel)
+                }
+                setShowLocationModal(false)
+              }}
+              disabled={!complaintLocation}
+            >
+              Use Selected Location
             </Button>
           </DialogFooter>
         </DialogContent>

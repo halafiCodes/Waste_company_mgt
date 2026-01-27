@@ -53,8 +53,11 @@ import {
   Flag,
   ClipboardCheck,
 } from "lucide-react"
-import { type User, ROLES } from "@/lib/rbac/types"
-import { authorizedGet } from "@/lib/api/client"
+import { type User, type Role } from "@/lib/rbac/types"
+import { authorizedGet, authorizedPost } from "@/lib/api/client"
+import { useRoles } from "@/lib/rbac/use-roles"
+import { GoogleMapView, type MapMarker } from "@/components/maps/google-map"
+import { jsPDF } from "jspdf"
 
 interface SupervisorDashboardProps {
   user: User
@@ -68,12 +71,23 @@ export function SupervisorDashboard({ user, onLogout }: SupervisorDashboardProps
   const [selectedRequest, setSelectedRequest] = useState<any | null>(null)
   const [requests, setRequests] = useState<any[]>([])
   const [escalations, setEscalations] = useState<any[]>([])
+  const [complaints, setComplaints] = useState<any[]>([])
+  const [dailyReports, setDailyReports] = useState<any[]>([])
   const [overview, setOverview] = useState({ pending_approvals: 0, pending_companies: 0, escalations: 0 })
   const [flaggedUsers, setFlaggedUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedComplaintId, setSelectedComplaintId] = useState<number | null>(null)
 
-  const role = ROLES[user.roleId]
+  const { roles } = useRoles()
+  const role = user.role ?? roles.find((item) => item.id === user.roleId) ?? ({
+    id: user.roleId,
+    name: "",
+    slug: "",
+    level: "",
+    authorityType: "",
+    description: "",
+  } as Role)
   const stats = useMemo(() => [
     { title: "Pending Reviews", value: `${requests.filter(r => r.status === "pending").length}`, change: "", trend: "up", icon: ClipboardCheck },
     { title: "Active Escalations", value: `${overview.escalations}`, change: "", trend: "up", icon: AlertTriangle },
@@ -85,15 +99,19 @@ export function SupervisorDashboard({ user, onLogout }: SupervisorDashboardProps
     setLoading(true)
     setError(null)
     try {
-      const [overviewRes, requestsRes, escalationsRes] = await Promise.all([
+      const [overviewRes, requestsRes, escalationsRes, complaintsRes, dailyRes] = await Promise.all([
         authorizedGet<typeof overview>("/central/role/supervisor/overview/"),
         authorizedGet<any>("/central/role/supervisor/requests/"),
         authorizedGet<any>("/central/role/supervisor/escalations/"),
+        authorizedGet<any>("/central/complaints/"),
+        authorizedGet<any>("/central/reports/daily/"),
       ])
       setOverview(overviewRes)
       const norm = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
       setRequests(norm(requestsRes))
       setEscalations(norm(escalationsRes))
+      setComplaints(norm(complaintsRes))
+      setDailyReports(norm(dailyRes))
       setFlaggedUsers([])
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load supervisor data"
@@ -110,6 +128,7 @@ export function SupervisorDashboard({ user, onLogout }: SupervisorDashboardProps
   const menuItems = [
     { id: "overview", label: "Monitoring Overview", icon: Eye },
     { id: "requests", label: "Pending Requests", icon: ClipboardCheck },
+    { id: "complaints", label: "Complaints", icon: AlertTriangle },
     { id: "escalations", label: "Escalations", icon: AlertTriangle },
     { id: "users", label: "User Oversight", icon: Users },
     { id: "compliance", label: "Compliance", icon: Shield },
@@ -122,6 +141,68 @@ export function SupervisorDashboard({ user, onLogout }: SupervisorDashboardProps
         Loading supervisor data...
       </div>
     )
+  }
+
+  const complaintMarkers: MapMarker[] = complaints
+    .filter((c) => typeof c.latitude === "number" && typeof c.longitude === "number")
+    .map((c) => ({
+      id: c.id,
+      position: { lat: Number(c.latitude), lng: Number(c.longitude) },
+      title: c.location_address,
+    }))
+
+  const selectedComplaint = complaints.find((c) => c.id === selectedComplaintId) ?? complaints[0]
+  const selectedMarker = selectedComplaint?.latitude && selectedComplaint?.longitude
+    ? [{
+        id: selectedComplaint.id,
+        position: { lat: Number(selectedComplaint.latitude), lng: Number(selectedComplaint.longitude) },
+        title: selectedComplaint.location_address,
+      }]
+    : complaintMarkers
+
+  const handleDailyReportAction = async (id: number, action: "approve" | "reject") => {
+    setError(null)
+    try {
+      await authorizedPost(`/central/reports/daily/${id}/${action}/`, {})
+      await loadData()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Failed to ${action} report`
+      setError(message)
+    }
+  }
+
+  const downloadDailyReportPdf = (report: any) => {
+    const doc = new jsPDF()
+    doc.setFontSize(16)
+    doc.text("Daily Waste Report", 14, 16)
+    doc.setFontSize(10)
+    const lines = [
+      `Date: ${report.report_date}`,
+      `Company: ${report.company || "—"}`,
+      `Total Waste (kg): ${report.total_waste_kg}`,
+      `Organic: ${report.waste_organic_kg} kg`,
+      `Plastic: ${report.waste_plastic_kg} kg`,
+      `Paper: ${report.waste_paper_kg} kg`,
+      `Metal: ${report.waste_metal_kg} kg`,
+      `Electronic: ${report.waste_electronic_kg} kg`,
+      `Hazardous: ${report.waste_hazardous_kg} kg`,
+      `Requests Completed: ${report.service_requests_completed}`,
+      `Areas Covered: ${report.areas_covered}`,
+      `Trucks Used: ${report.trucks_used}`,
+      `Distance Traveled (km): ${report.distance_traveled_km}`,
+      `Missed Pickups: ${report.missed_pickups}`,
+      `Disposal Site: ${report.disposal_site}`,
+      `Recycled (kg): ${report.recycled_kg}`,
+      `Disposed (kg): ${report.disposed_kg}`,
+      `Safety Incidents: ${report.safety_incidents || "None"}`,
+      `Status: ${report.status}`,
+    ]
+    let y = 28
+    lines.forEach((line) => {
+      doc.text(line, 14, y)
+      y += 6
+    })
+    doc.save(`daily-report-${report.id}.pdf`)
   }
 
   return (
@@ -424,7 +505,146 @@ export function SupervisorDashboard({ user, onLogout }: SupervisorDashboardProps
             </div>
           )}
 
-          {(activeTab === "requests" || activeTab === "escalations" || activeTab === "compliance" || activeTab === "reports") && (
+          {activeTab === "complaints" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Complaint Locations</CardTitle>
+                  <CardDescription>Map preview of reported issues</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {complaints.map((complaint) => (
+                      <Button
+                        key={complaint.id}
+                        size="sm"
+                        variant={selectedComplaint?.id === complaint.id ? "default" : "outline"}
+                        onClick={() => setSelectedComplaintId(complaint.id)}
+                      >
+                        #{complaint.id}
+                      </Button>
+                    ))}
+                  </div>
+                  <GoogleMapView
+                    markers={selectedMarker}
+                    zoom={13}
+                    height="320px"
+                  />
+                  {!selectedMarker.length && (
+                    <p className="text-sm text-muted-foreground">No complaint locations available.</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Complaints</CardTitle>
+                  <CardDescription>Submitted resident reports</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Address</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Reported</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {complaints.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+                            No complaints available.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        complaints.map((complaint) => (
+                          <TableRow key={complaint.id}>
+                            <TableCell className="font-mono">{complaint.id}</TableCell>
+                            <TableCell>{complaint.report_type}</TableCell>
+                            <TableCell className="max-w-[280px] truncate">{complaint.location_address}</TableCell>
+                            <TableCell>
+                              <Badge variant={complaint.status === "open" ? "secondary" : "outline"}>
+                                {complaint.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{complaint.reported_at ? new Date(complaint.reported_at).toLocaleDateString() : "—"}</TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="outline" onClick={() => setSelectedComplaintId(complaint.id)}>
+                                View Map
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "reports" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Daily Waste Reports</CardTitle>
+                  <CardDescription>Review and approve company submissions</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Total Waste (kg)</TableHead>
+                        <TableHead>Requests Completed</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dailyReports.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                            No daily reports submitted.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        dailyReports.map((report) => (
+                          <TableRow key={report.id}>
+                            <TableCell>{report.report_date}</TableCell>
+                            <TableCell>{report.total_waste_kg}</TableCell>
+                            <TableCell>{report.service_requests_completed}</TableCell>
+                            <TableCell>
+                              <Badge variant={report.status === "approved" ? "default" : report.status === "rejected" ? "destructive" : "secondary"}>
+                                {report.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right space-x-2">
+                              <Button size="sm" variant="outline" onClick={() => downloadDailyReportPdf(report)}>
+                                Download PDF
+                              </Button>
+                              {report.status === "pending" && (
+                                <>
+                                  <Button size="sm" variant="outline" onClick={() => handleDailyReportAction(report.id, "reject")}>Reject</Button>
+                                  <Button size="sm" onClick={() => handleDailyReportAction(report.id, "approve")}>Approve</Button>
+                                </>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {(activeTab === "requests" || activeTab === "escalations" || activeTab === "compliance") && (
             <Card>
               <CardContent className="flex items-center justify-center py-12">
                 <div className="text-center">

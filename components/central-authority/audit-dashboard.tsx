@@ -41,8 +41,9 @@ import {
   AlertTriangle,
   Scale,
 } from "lucide-react"
-import { type User, ROLES } from "@/lib/rbac/types"
+import { type User, type Role } from "@/lib/rbac/types"
 import { authorizedGet } from "@/lib/api/client"
+import { useRoles } from "@/lib/rbac/use-roles"
 
 interface AuditDashboardProps {
   user: User
@@ -57,7 +58,15 @@ export function AuditDashboard({ user, onLogout }: AuditDashboardProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const role = ROLES[user.roleId]
+  const { roles } = useRoles()
+  const role = user.role ?? roles.find((item) => item.id === user.roleId) ?? ({
+    id: user.roleId,
+    name: "",
+    slug: "",
+    level: "",
+    authorityType: "",
+    description: "",
+  } as Role)
 
   const stats = useMemo(() => {
     const total = overview.total

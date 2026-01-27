@@ -16,6 +16,7 @@ export type ApiUser = {
     id?: number
     name?: string
     slug?: string
+    description?: string
   }
 }
 
@@ -68,13 +69,14 @@ async function apiRequest<T>(
   options: { auth?: boolean; retry?: boolean } = { auth: true, retry: false }
 ): Promise<T> {
   const tokens = getStoredTokens()
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(init.headers || {}),
+  const headers = new Headers(init.headers || {})
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData
+  if (!headers.has("Content-Type") && !isFormData) {
+    headers.set("Content-Type", "application/json")
   }
 
   if (options.auth !== false && tokens?.access) {
-    headers["Authorization"] = `Bearer ${tokens.access}`
+    headers.set("Authorization", `Bearer ${tokens.access}`)
   }
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -147,10 +149,21 @@ export async function authorizedGet<T>(path: string): Promise<T> {
   return apiRequest<T>(path)
 }
 
+export async function publicGet<T>(path: string): Promise<T> {
+  return apiRequest<T>(path, {}, { auth: false })
+}
+
 export async function authorizedPost<T>(path: string, body: any): Promise<T> {
   return apiRequest<T>(path, {
     method: "POST",
     body: JSON.stringify(body),
+  })
+}
+
+export async function authorizedPostForm<T>(path: string, body: FormData): Promise<T> {
+  return apiRequest<T>(path, {
+    method: "POST",
+    body,
   })
 }
 
