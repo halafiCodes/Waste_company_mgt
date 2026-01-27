@@ -182,11 +182,23 @@ def analytics_overview(request):
         .annotate(total=Count("id"))
         .order_by("month")
     )
+    completed_by_month = (
+        CollectionRequest.objects.filter(collected_at__isnull=False)
+        .annotate(month=TruncMonth("collected_at"))
+        .values("month")
+        .annotate(total=Count("id"))
+        .order_by("month")
+    )
     complaints_by_month = (
         WasteReport.objects.annotate(month=TruncMonth("reported_at"))
         .values("month")
         .annotate(total=Count("id"))
         .order_by("month")
+    )
+    complaints_status_distribution = (
+        WasteReport.objects.values("status")
+        .annotate(total=Count("id"))
+        .order_by("status")
     )
     status_distribution = (
         CollectionRequest.objects.values("status")
@@ -197,6 +209,24 @@ def analytics_overview(request):
         CollectionRequest.objects.values("waste_type")
         .annotate(total=Count("id"))
         .order_by("waste_type")
+    )
+
+    approvals_by_type = (
+        ApprovalRequest.objects.values("request_type")
+        .annotate(total=Count("id"))
+        .order_by("request_type")
+    )
+    approvals_pending = ApprovalRequest.objects.filter(status="pending").count()
+
+    route_status_distribution = (
+        Route.objects.values("status")
+        .annotate(total=Count("id"))
+        .order_by("status")
+    )
+    vehicle_status_distribution = (
+        Vehicle.objects.values("current_status")
+        .annotate(total=Count("id"))
+        .order_by("current_status")
     )
 
     volume_by_month = (
@@ -375,7 +405,9 @@ def analytics_overview(request):
                 "open_complaints": open_complaints,
             },
             "collections_monthly": list(requests_by_month),
+            "collections_completed_monthly": list(completed_by_month),
             "complaints_monthly": list(complaints_by_month),
+            "complaints_status_distribution": list(complaints_status_distribution),
             "request_status_distribution": list(status_distribution),
             "waste_type_distribution": list(waste_type_distribution),
             "collection_volume_trends": list(volume_by_month),
@@ -384,6 +416,10 @@ def analytics_overview(request):
             "area_insights": zone_insights,
             "vehicle_utilization": list(vehicle_utilization.values()),
             "route_utilization": route_utilization,
+            "route_status_distribution": list(route_status_distribution),
+            "vehicle_status_distribution": list(vehicle_status_distribution),
+            "approvals_pending": approvals_pending,
+            "approvals_by_type": list(approvals_by_type),
             "recent_requests": recent_requests_payload,
             "recent_collection_records": recent_records_payload,
         }

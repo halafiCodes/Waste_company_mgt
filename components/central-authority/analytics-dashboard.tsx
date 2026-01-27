@@ -63,11 +63,42 @@ export function AnalyticsDashboard({ user, onLogout }: AnalyticsDashboardProps) 
   const [searchQuery, setSearchQuery] = useState("")
   const [dateRange, setDateRange] = useState("30d")
   const [analytics, setAnalytics] = useState<{
-    totals: { collection_requests: number; completed_requests: number; open_complaints: number }
+    totals: { collection_requests: number; completed_requests: number; open_requests: number; open_complaints: number }
     collections_monthly: any[]
     complaints_monthly: any[]
+    request_status_distribution: any[]
     waste_type_distribution: any[]
-  }>({ totals: { collection_requests: 0, completed_requests: 0, open_complaints: 0 }, collections_monthly: [], complaints_monthly: [], waste_type_distribution: [] })
+    collection_volume_trends: any[]
+    average_completion_hours: number
+    company_performance: any[]
+    area_insights: any[]
+    vehicle_utilization: any[]
+    route_utilization: any[]
+    complaints_status_distribution: any[]
+    route_status_distribution: any[]
+    vehicle_status_distribution: any[]
+    approvals_pending: number
+    approvals_by_type: any[]
+    collections_completed_monthly: any[]
+  }>({
+    totals: { collection_requests: 0, completed_requests: 0, open_requests: 0, open_complaints: 0 },
+    collections_monthly: [],
+    complaints_monthly: [],
+    request_status_distribution: [],
+    waste_type_distribution: [],
+    collection_volume_trends: [],
+    average_completion_hours: 0,
+    company_performance: [],
+    area_insights: [],
+    vehicle_utilization: [],
+    route_utilization: [],
+    complaints_status_distribution: [],
+    route_status_distribution: [],
+    vehicle_status_distribution: [],
+    approvals_pending: 0,
+    approvals_by_type: [],
+    collections_completed_monthly: [],
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -81,12 +112,16 @@ export function AnalyticsDashboard({ user, onLogout }: AnalyticsDashboardProps) 
     description: "",
   } as Role)
 
+  const totalVolumeKg = useMemo(() => {
+    return (analytics.collection_volume_trends || []).reduce((acc: number, item: any) => acc + Number(item.total_weight_kg || 0), 0)
+  }, [analytics.collection_volume_trends])
+
   const stats = useMemo(() => [
     { title: "Collection Requests", value: analytics.totals.collection_requests.toLocaleString(), change: "", trend: "up", icon: Truck },
     { title: "Completed", value: analytics.totals.completed_requests.toLocaleString(), change: "", trend: "up", icon: Target },
-    { title: "Open Complaints", value: analytics.totals.open_complaints.toLocaleString(), change: "", trend: analytics.totals.open_complaints > 0 ? "down" : "up", icon: FileText },
-    { title: "Waste Types", value: analytics.waste_type_distribution.length.toString(), change: "", trend: "neutral", icon: Layers },
-  ], [analytics])
+    { title: "Open Requests", value: analytics.totals.open_requests.toLocaleString(), change: "", trend: analytics.totals.open_requests > 0 ? "down" : "up", icon: FileText },
+    { title: "Total Collected (kg)", value: totalVolumeKg.toLocaleString(), change: "", trend: "up", icon: Layers },
+  ], [analytics, totalVolumeKg])
 
   const menuItems = [
     { id: "overview", label: "Analytics Overview", icon: PieChart },
@@ -105,6 +140,10 @@ export function AnalyticsDashboard({ user, onLogout }: AnalyticsDashboardProps) 
     complaints: {
       label: "Complaints",
       color: "hsl(var(--chart-5))",
+    },
+    volume: {
+      label: "Volume (kg)",
+      color: "hsl(var(--chart-3))",
     },
     efficiency: {
       label: "Efficiency",
@@ -152,6 +191,52 @@ export function AnalyticsDashboard({ user, onLogout }: AnalyticsDashboardProps) 
     }))
   }, [analytics.waste_type_distribution])
 
+  const statusDistribution = useMemo(() => {
+    return (analytics.request_status_distribution || []).map((item: any, idx: number) => ({
+      name: item.status || "Unknown",
+      value: item.total,
+      color: `hsl(var(--chart-${(idx % 5) + 1}))`,
+    }))
+  }, [analytics.request_status_distribution])
+
+  const complaintStatusData = useMemo(() => {
+    return (analytics.complaints_status_distribution || []).map((item: any, idx: number) => ({
+      name: item.status || "Unknown",
+      value: item.total,
+      color: `hsl(var(--chart-${(idx % 5) + 1}))`,
+    }))
+  }, [analytics.complaints_status_distribution])
+
+  const approvalsByType = useMemo(() => {
+    return (analytics.approvals_by_type || []).map((item: any) => ({
+      type: item.request_type || "Unknown",
+      total: item.total,
+    }))
+  }, [analytics.approvals_by_type])
+
+  const routeStatusData = useMemo(() => {
+    return (analytics.route_status_distribution || []).map((item: any, idx: number) => ({
+      name: item.status || "Unknown",
+      value: item.total,
+      color: `hsl(var(--chart-${(idx % 5) + 1}))`,
+    }))
+  }, [analytics.route_status_distribution])
+
+  const vehicleStatusData = useMemo(() => {
+    return (analytics.vehicle_status_distribution || []).map((item: any, idx: number) => ({
+      name: item.current_status || "Unknown",
+      value: item.total,
+      color: `hsl(var(--chart-${(idx % 5) + 1}))`,
+    }))
+  }, [analytics.vehicle_status_distribution])
+
+  const volumeTrendData = useMemo(() => {
+    return (analytics.collection_volume_trends || []).map((item: any) => ({
+      month: formatMonth(item.month),
+      volume: Number(item.total_weight_kg || 0),
+    }))
+  }, [analytics.collection_volume_trends])
+
   useEffect(() => {
     const load = async () => {
       setLoading(true)
@@ -159,10 +244,23 @@ export function AnalyticsDashboard({ user, onLogout }: AnalyticsDashboardProps) 
       try {
         const data = await authorizedGet<typeof analytics>("/central/role/analytics/overview/")
         setAnalytics({
-          totals: data.totals ?? { collection_requests: 0, completed_requests: 0, open_complaints: 0 },
+          totals: data.totals ?? { collection_requests: 0, completed_requests: 0, open_requests: 0, open_complaints: 0 },
           collections_monthly: data.collections_monthly ?? [],
           complaints_monthly: data.complaints_monthly ?? [],
+          request_status_distribution: data.request_status_distribution ?? [],
           waste_type_distribution: data.waste_type_distribution ?? [],
+          collection_volume_trends: data.collection_volume_trends ?? [],
+          average_completion_hours: data.average_completion_hours ?? 0,
+          company_performance: data.company_performance ?? [],
+          area_insights: data.area_insights ?? [],
+          vehicle_utilization: data.vehicle_utilization ?? [],
+          route_utilization: data.route_utilization ?? [],
+          complaints_status_distribution: data.complaints_status_distribution ?? [],
+          route_status_distribution: data.route_status_distribution ?? [],
+          vehicle_status_distribution: data.vehicle_status_distribution ?? [],
+          approvals_pending: data.approvals_pending ?? 0,
+          approvals_by_type: data.approvals_by_type ?? [],
+          collections_completed_monthly: data.collections_completed_monthly ?? [],
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load analytics data"
@@ -394,10 +492,339 @@ export function AnalyticsDashboard({ user, onLogout }: AnalyticsDashboardProps) 
                       <p className="text-sm text-muted-foreground">of {analytics.totals.collection_requests.toLocaleString()} total</p>
                     </div>
                     <div className="rounded-lg border p-4">
-                      <p className="font-medium">Open Complaints</p>
-                      <p className="text-2xl font-bold mt-2">{analytics.totals.open_complaints.toLocaleString()}</p>
-                      <p className="text-sm text-muted-foreground">Across all zones</p>
+                      <p className="font-medium">Average Completion (hrs)</p>
+                      <p className="text-2xl font-bold mt-2">{analytics.average_completion_hours.toLocaleString()}</p>
+                      <p className="text-sm text-muted-foreground">Time from request to completion</p>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : activeTab === "collections" ? (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Request Status Distribution</CardTitle>
+                  <CardDescription>How collection requests are progressing</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-center h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={statusDistribution}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {statusDistribution.map((entry, index) => (
+                            <Cell key={`status-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-center gap-4">
+                    {statusDistribution.map((status) => (
+                      <div key={status.name} className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: status.color }} />
+                        <span className="text-sm text-muted-foreground">{status.name}: {status.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Complaint Status Distribution</CardTitle>
+                  <CardDescription>Live complaints grouped by status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-center h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={complaintStatusData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {complaintStatusData.map((entry, index) => (
+                            <Cell key={`complaint-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-center gap-4">
+                    {complaintStatusData.map((status) => (
+                      <div key={status.name} className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: status.color }} />
+                        <span className="text-sm text-muted-foreground">{status.name}: {status.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Collection Volume Trends</CardTitle>
+                  <CardDescription>Total collected weight (kg) over time</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={chartConfig} className="h-[300px]">
+                    <RechartsLineChart data={volumeTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line type="monotone" dataKey="volume" stroke="var(--color-volume)" strokeWidth={2} />
+                    </RechartsLineChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </div>
+          ) : activeTab === "performance" ? (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Company Performance</CardTitle>
+                  <CardDescription>Operational output by waste company</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4">
+                    {(analytics.company_performance || []).map((item: any) => (
+                      <div key={item.company_id ?? item.company_name} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+                        <div>
+                          <p className="font-medium">{item.company_name}</p>
+                          <p className="text-sm text-muted-foreground">Requests: {item.total_requests} • Completed: {item.completed_requests}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <Badge variant="secondary">Completion: {item.completion_rate}%</Badge>
+                          <Badge variant="outline">Avg hrs: {item.avg_completion_hours}</Badge>
+                          <Badge variant="outline">Weight: {Number(item.total_collected_weight_kg || 0).toLocaleString()} kg</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Vehicle Utilization</CardTitle>
+                  <CardDescription>Routes, distance, and active hours</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4">
+                    {(analytics.vehicle_utilization || []).map((vehicle: any) => (
+                      <div key={vehicle.vehicle_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+                        <div>
+                          <p className="font-medium">{vehicle.plate_number || `Vehicle ${vehicle.vehicle_id}`}</p>
+                          <p className="text-sm text-muted-foreground">Routes: {vehicle.total_routes}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <Badge variant="secondary">Distance: {Number(vehicle.total_distance_km || 0).toLocaleString()} km</Badge>
+                          <Badge variant="outline">Active hrs: {Number(vehicle.total_active_hours || 0).toLocaleString()}</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Vehicle Status Distribution</CardTitle>
+                  <CardDescription>Active, inactive, and maintenance totals</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-center h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={vehicleStatusData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {vehicleStatusData.map((entry, index) => (
+                            <Cell key={`vehicle-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-center gap-4">
+                    {vehicleStatusData.map((status) => (
+                      <div key={status.name} className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full"  style={{ backgroundColor: status.color }} />
+                        <span className="text-sm text-muted-foreground">{status.name}: {status.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : activeTab === "trends" ? (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Area-based Collection Insights</CardTitle>
+                  <CardDescription>Zone-level request volume and performance</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4">
+                    {(analytics.area_insights || []).map((zone: any) => (
+                      <div key={zone.zone_id ?? zone.zone_name} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+                        <div>
+                          <p className="font-medium">{zone.zone_name}</p>
+                          <p className="text-sm text-muted-foreground">Requests: {zone.total_requests} • Completed: {zone.completed_requests}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <Badge variant="outline">Weight: {Number(zone.total_collected_weight_kg || 0).toLocaleString()} kg</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Supervisory Approvals</CardTitle>
+                  <CardDescription>Pending approvals and request types</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-4 text-sm text-muted-foreground">Pending approvals: <strong>{analytics.approvals_pending}</strong></div>
+                  <div className="grid gap-3">
+                    {approvalsByType.map((item) => (
+                      <div key={item.type} className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                        <span className="font-medium">{item.type}</span>
+                        <Badge variant="secondary">{item.total}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : activeTab === "reports" ? (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Service Requests</CardTitle>
+                  <CardDescription>Latest collection requests across zones</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4">
+                    {(analytics as any).recent_requests?.map((req: any) => (
+                      <div key={req.request_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+                        <div>
+                          <p className="font-medium">Request #{req.request_id}</p>
+                          <p className="text-sm text-muted-foreground">{req.request_type} • {req.zone || "Unassigned"}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <Badge variant="secondary">{req.status}</Badge>
+                          <Badge variant="outline">Submitted: {new Date(req.submitted_at).toLocaleString()}</Badge>
+                          {req.completed_at && <Badge variant="outline">Completed: {new Date(req.completed_at).toLocaleString()}</Badge>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Collection Records</CardTitle>
+                  <CardDescription>Completed pickups and recorded weights</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4">
+                    {(analytics as any).recent_collection_records?.map((record: any) => (
+                      <div key={record.record_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+                        <div>
+                          <p className="font-medium">Record #{record.record_id}</p>
+                          <p className="text-sm text-muted-foreground">Request #{record.request_id} • Truck {record.truck_id ?? "N/A"}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <Badge variant="secondary">{Number(record.actual_weight_kg || 0).toLocaleString()} kg</Badge>
+                          <Badge variant="outline">{new Date(record.collected_at).toLocaleString()}</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : activeTab === "dashboards" ? (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Route Utilization</CardTitle>
+                  <CardDescription>Operational activity by route</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4">
+                    {(analytics.route_utilization || []).map((route: any) => (
+                      <div key={route.route_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+                        <div>
+                          <p className="font-medium">{route.route_name}</p>
+                          <p className="text-sm text-muted-foreground">Status: {route.status}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <Badge variant="secondary">Distance: {Number(route.distance_km || 0).toLocaleString()} km</Badge>
+                          <Badge variant="outline">Duration: {Number(route.duration_hours || 0).toLocaleString()} hrs</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Route Status Distribution</CardTitle>
+                  <CardDescription>Routes grouped by operational status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-center h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={routeStatusData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {routeStatusData.map((entry, index) => (
+                            <Cell key={`route-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-center gap-4">
+                    {routeStatusData.map((status) => (
+                      <div key={status.name} className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full"  style={{ backgroundColor: status.color }} />
+                        <span className="text-sm text-muted-foreground">{status.name}: {status.value}</span>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
