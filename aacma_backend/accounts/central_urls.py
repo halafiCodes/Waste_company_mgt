@@ -17,6 +17,9 @@ from .role_views import (
     supervisor_escalations,
     it_status,
     analytics_overview,
+    analytics_company_performance,
+    analytics_area_insights,
+    analytics_vehicle_utilization,
     audit_overview,
 )
 
@@ -44,6 +47,9 @@ urlpatterns = [
     path("role/supervisor/escalations/", supervisor_escalations, name="role-supervisor-escalations"),
     path("role/it/status/", it_status, name="role-it-status"),
     path("role/analytics/overview/", analytics_overview, name="role-analytics-overview"),
+    path("role/analytics/company-performance/", analytics_company_performance, name="role-analytics-company-performance"),
+    path("role/analytics/area-insights/", analytics_area_insights, name="role-analytics-area-insights"),
+    path("role/analytics/vehicle-utilization/", analytics_vehicle_utilization, name="role-analytics-vehicle-utilization"),
     path("role/audit/overview/", audit_overview, name="role-audit-overview"),
 ]
 
