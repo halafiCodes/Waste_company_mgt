@@ -80,6 +80,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
   const [routes, setRoutes] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
   const [dailyReports, setDailyReports] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<any[]>([])
   const [selectedReport, setSelectedReport] = useState<"daily" | "fleet" | "driver" | "route">("daily")
   const [companyStats, setCompanyStats] = useState<{ fleet_size: number; employee_count: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -135,13 +136,14 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
       setLoading(true)
       setError(null)
       try {
-        const [statsRes, vehicleRes, driverRes, routeRes, requestRes, dailyRes] = await Promise.all([
+        const [statsRes, vehicleRes, driverRes, routeRes, requestRes, dailyRes, notifRes] = await Promise.all([
           authorizedGet<{ fleet_size: number; employee_count: number }>("/company/dashboard/"),
           authorizedGet<any>("/fleet/vehicles/"),
           authorizedGet<any>("/fleet/drivers/"),
           authorizedGet<any>("/routes/"),
           authorizedGet<any>("/collections/company/requests/"),
           authorizedGet<any>("/reports/daily/"),
+          authorizedGet<any>("/notifications/"),
         ])
 
         setCompanyStats(statsRes)
@@ -153,6 +155,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
         })))
         setRequests(normalize(requestRes))
         setDailyReports(normalize(dailyRes))
+        setNotifications(normalize(notifRes))
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load data"
         setError(message)
@@ -166,11 +169,12 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
 
   const reload = async () => {
     const normalize = (res: any) => (Array.isArray(res) ? res : res?.results ?? [])
-    const [vehicleRes, driverRes, routeRes, dailyRes] = await Promise.all([
+    const [vehicleRes, driverRes, routeRes, dailyRes, notifRes] = await Promise.all([
       authorizedGet<any>("/fleet/vehicles/"),
       authorizedGet<any>("/fleet/drivers/"),
       authorizedGet<any>("/routes/"),
       authorizedGet<any>("/reports/daily/"),
+      authorizedGet<any>("/notifications/"),
     ])
     setVehicles(normalize(vehicleRes))
     setDrivers(normalize(driverRes))
@@ -179,6 +183,7 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
       progress: r.total_stops ? Math.round(((r.completed_stops ?? 0) / r.total_stops) * 100) : 0,
     })))
     setDailyReports(normalize(dailyRes))
+    setNotifications(normalize(notifRes))
   }
 
   const randomizeLocation = () => {
@@ -610,12 +615,40 @@ export function WasteCompanyDashboard({ user, onLogout }: WasteCompanyDashboardP
                 className="w-64 pl-9"
               />
             </div>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
-                3
-              </span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="h-5 w-5" />
+                  {notifications.filter((n) => !n.is_read).length > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
+                      {notifications.filter((n) => !n.is_read).length}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {notifications.length === 0 ? (
+                  <DropdownMenuItem className="text-sm text-muted-foreground">
+                    No notifications yet.
+                  </DropdownMenuItem>
+                ) : (
+                  notifications.map((notification) => (
+                    <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 py-3">
+                      <div className="flex w-full items-center justify-between">
+                        <span className={`font-medium ${!notification.is_read ? "text-foreground" : "text-muted-foreground"}`}>
+                          {notification.title || notification.type || "Notification"}
+                        </span>
+                        {!notification.is_read && <span className="h-2 w-2 rounded-full bg-primary" />}
+                      </div>
+                      <span className="text-sm text-muted-foreground">{notification.message || notification.content || ""}</span>
+                      <span className="text-xs text-muted-foreground">{notification.created_at}</span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2">
